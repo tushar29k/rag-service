@@ -1,7 +1,7 @@
 """Demo CLI: builds the index from data/sample_docs.json and answers questions.
 
     python3 cli.py            # interactive Q&A
-    python3 cli.py --demo     # runs 3 canned questions, prints timings
+    python3 cli.py --demo     # 3 canned questions, with per-stage timings
 """
 import json
 import sys
@@ -21,7 +21,8 @@ def main():
                  if "--demo" in sys.argv else None)
 
     def ask(q):
-        # country filter demo: only Indian policies considered
+        # demo nicety: everything is filtered to Indian policies so the
+        # metadata pre-filter actually gets exercised
         res = rag.answer(q, filters={"country": "IN"})
         print(f"Q: {q}\nA: {res['answer']}")
         print(f"  ({res['latency_ms']}ms {res['breakdown']})")
