@@ -1,8 +1,9 @@
 """Vector store: numpy brute-force + metadata pre-filtering + persistence.
 
-Brute force is O(n·d) per query — fine to ~100K chunks, and perfect for
-learning. The interface (upsert/search/save/load) is what Qdrant/pgvector
-provide, so the pipeline never knows the difference.
+Brute force is O(n·d) per query, which sounds bad but is honestly fine up
+to ~100K chunks — and perfect for learning, because there's nowhere for a
+bug to hide. The interface (upsert/search/save/load) mirrors what
+Qdrant/pgvector give you, so the pipeline never knows the difference.
 
 # SWAP (production): implement the same 4 methods on QdrantClient /
 # pinecone / pgvector. Only this file changes.
@@ -15,11 +16,18 @@ class VectorStore:
     def __init__(self, dim):
         self.dim = dim
         self.emb = np.zeros((0, dim), dtype=np.float32)
-        self.texts = []    # chunk texts, aligned with emb rows
-        self.metas = []    # chunk metadata dicts, aligned with emb rows
+        # texts and metas stay row-aligned with emb — row i is always the
+        # same chunk in all three, don't break that invariant
+        self.texts = []
+        self.metas = []
 
     def upsert(self, texts, embs, metas):
-        """Add chunks. Idempotent callers should dedupe BEFORE calling."""
+        """Add chunks to the index.
+
+        Not deduped here — if you index the same doc twice you get it
+        twice. Callers dedupe first (pipeline.py does it with content
+        hashes).
+        """
         assert embs.shape[1] == self.dim
         self.emb = np.vstack([self.emb, embs]) if len(self.emb) else embs
         self.texts.extend(texts)
@@ -28,13 +36,14 @@ class VectorStore:
     def _filtered_ids(self, filters):
         if not filters:
             return list(range(len(self.texts)))
-        # PRE-filter: candidates outside the filter are never scored.
-        # (Post-filtering — retrieve then discard — silently kills recall.)
+        # Filter FIRST, score second. The tempting alternative — retrieve
+        # then throw away — silently tanks recall when the filter would
+        # have removed most of the top-k.
         return [i for i, m in enumerate(self.metas)
                 if all(m.get(k) == v for k, v in filters.items())]
 
     def search(self, query_vec, top_k=5, filters=None):
-        """Returns [(text, score, meta)] sorted by cosine similarity."""
+        """Top-k chunks as (text, score, meta) tuples, best first."""
         ids = self._filtered_ids(filters)
         if not ids:
             return []
