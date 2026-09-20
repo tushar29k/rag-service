@@ -1,15 +1,17 @@
 """Chunking: split documents into overlapping word-windows.
 
-Why word-based? Simple, deterministic, and good enough to learn the
-mechanics. Production swap: sentence-aware splitters (LangChain's
-RecursiveCharacterTextSplitter) that respect sentence boundaries.
+Word-based chunking is crude but deterministic, which is exactly what you
+want while you're learning the mechanics. Once you're comfortable here,
+swap in something sentence-aware (e.g. LangChain's
+RecursiveCharacterTextSplitter) that respects sentence boundaries.
 """
 
 def chunk_text(text, chunk_size=120, overlap=20):
-    """Split text into overlapping chunks of `chunk_size` words.
+    """Split text into overlapping windows of `chunk_size` words.
 
-    Overlap exists so a sentence straddling a boundary appears whole in at
-    least one chunk — otherwise the retriever can miss it entirely.
+    The overlap is the whole point: without it, a sentence that straddles
+    a boundary gets cut in half, and the retriever can miss the one chunk
+    that had your answer.
     """
     words = text.split()
     if not words:
@@ -20,7 +22,7 @@ def chunk_text(text, chunk_size=120, overlap=20):
         chunks.append(" ".join(words[start:end]))
         if end == len(words):
             break
-        start = end - overlap   # step back so the next chunk overlaps
+        start = end - overlap   # step back so the next window re-covers the tail
     return chunks
 
 
