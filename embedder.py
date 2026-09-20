@@ -1,8 +1,8 @@
-"""Embeddings with ZERO heavy dependencies: hashing TF-IDF.
+"""Embeddings with zero heavy dependencies: hashing TF-IDF.
 
-This is intentionally not a neural embedder — it's here so the whole
-pipeline runs on this machine today. The interface (fit/transform) matches
-what a real embedder provides, so swapping is one class change.
+Yeah, it's a bag-of-words trick, not a neural model — that's deliberate.
+It runs anywhere with no downloads, and the fit/transform interface is the
+same shape a real embedder gives you, so the swap is a one-class change.
 
 # SWAP (production): replace TfidfEmbedder with:
 #   from sentence_transformers import SentenceTransformer
@@ -29,20 +29,29 @@ class TfidfEmbedder:
 
     @staticmethod
     def _bucket(token, dim):
-        # md5, NOT Python's hash(): deterministic across runs
+        # md5, not Python's hash() — hash() is salted per process, md5 isn't,
+        # so the same token lands in the same bucket on every run.
         return int(hashlib.md5(token.encode()).hexdigest(), 16) % dim
 
     def fit(self, docs):
-        """Learn IDF from the corpus. Call once before transform()."""
+        """One pass over the corpus to learn IDF weights.
+
+        Call this once before transform() — the assert will remind you
+        if you forget.
+        """
         for doc in docs:
             for tok in set(_tokenize(doc)):
                 self.df[self._bucket(tok, self.dim)] += 1
             self.n += 1
-        # smoothed IDF: common words get low weight, rare words high
+        # smoothed IDF: words that show up everywhere get squashed,
+        # rare words get boosted
         self._idf = np.log((1 + self.n) / (1 + self.df)) + 1
 
     def transform(self, texts):
-        """Texts -> (n, dim) L2-normalised float32 vectors."""
+        """Turn texts into L2-normalised float32 vectors, shape (n, dim).
+
+        Normalised so that cosine similarity later is just a dot product.
+        """
         assert self._idf is not None, "call fit() first"
         X = np.zeros((len(texts), self.dim), dtype=np.float32)
         for i, text in enumerate(texts):
@@ -57,7 +66,7 @@ class TfidfEmbedder:
                 X[i, b] = (1 + math.log(c)) * self._idf[b]  # sublinear TF × IDF
             norm = np.linalg.norm(X[i])
             if norm:
-                X[i] /= norm                     # cosine = dot product
+                X[i] /= norm   # empty docs stay zero vectors — fine, they score nothing
         return X
 
 
