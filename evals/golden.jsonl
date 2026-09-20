@@ -1,0 +1,8 @@
+{"question": "What is the refund window?", "filters": {"country": "IN"}, "must_contain": ["30 days"], "expected_doc": "refund-in"}
+{"question": "How long is maternity leave in India?", "filters": {"country": "IN"}, "must_contain": ["26 weeks"], "expected_doc": "leave-in"}
+{"question": "How much paternity leave do employees get?", "filters": {"country": "IN"}, "must_contain": ["15 days"], "expected_doc": "leave-in"}
+{"question": "What does the warranty cover?", "filters": {"country": "IN"}, "must_contain": ["2 year"], "expected_doc": "warranty-in"}
+{"question": "How long does standard shipping take?", "filters": {"country": "US"}, "must_contain": ["3 to 5"], "expected_doc": "shipping-us"}
+{"question": "What discount do new customers get?", "filters": {"country": "IN"}, "must_contain": ["10 percent"], "expected_doc": "pricing-in"}
+{"question": "What is the return policy for clearance items?", "filters": {"country": "IN"}, "must_contain": ["final sale"], "expected_doc": "refund-in"}
+{"question": "Who is the CEO?", "filters": {"country": "IN"}, "must_contain": ["don't know"], "expected_doc": null}
