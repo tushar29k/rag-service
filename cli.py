@@ -1,0 +1,48 @@
+"""Demo CLI: builds the index from data/sample_docs.json and answers questions.
+
+    python3 cli.py            # interactive Q&A
+    python3 cli.py --demo     # runs 3 canned questions, prints timings
+"""
+import json
+import sys
+
+from pipeline import RAGPipeline
+
+
+def main():
+    rag = RAGPipeline()
+    docs = json.load(open("data/sample_docs.json"))
+    n = rag.index_documents(docs)
+    print(f"indexed {n} chunks (version {rag.index_version})\n")
+
+    questions = (["What is the refund window?",
+                  "How long is maternity leave in India?",
+                  "What does the warranty cover?"]
+                 if "--demo" in sys.argv else None)
+
+    def ask(q):
+        # country filter demo: only Indian policies considered
+        res = rag.answer(q, filters={"country": "IN"})
+        print(f"Q: {q}\nA: {res['answer']}")
+        print(f"  ({res['latency_ms']}ms {res['breakdown']})")
+        for c in res["citations"]:
+            print(f"  [score {c['score']}] {c['text'][:90]}...")
+
+    if questions:
+        for q in questions:
+            ask(q)
+            print()
+    else:
+        print("Ask questions (empty line quits). Prefix 'nofilter:' to skip the country filter.")
+        while True:
+            q = input("\n> ").strip()
+            if not q:
+                break
+            filt = None if q.startswith("nofilter:") else {"country": "IN"}
+            q = q.replace("nofilter:", "")
+            res = rag.answer(q, filters=filt)
+            print(f"A: {res['answer']}  ({res['latency_ms']}ms)")
+
+
+if __name__ == "__main__":
+    main()
