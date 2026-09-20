@@ -2,15 +2,16 @@
 
     python3 evals/run_eval.py
 
-Metrics:
-  recall@3  — is the right document among the top-3 retrieved?
-  evidence  — do the retrieved chunks contain the answer keywords?
+What it checks, per question:
+  recall@3  — did we retrieve the right document in the top 3?
+  evidence  — do the retrieved chunks actually contain the answer keywords?
 
-Why "evidence" and not answer faithfulness? This project's generator is an
-extractive mock (see pipeline.py # SWAP). Answer-level faithfulness needs a
-real LLM (or an LLM judge) — what THIS pipeline owns is retrieval quality,
-so that's what we assert on. When you swap in a real LLM, add an
-LLM-as-judge check: "is the answer supported by the citations?"
+Why "evidence" and not answer faithfulness? The generator here is an
+extractive mock (see pipeline.py # SWAP), so answer-level faithfulness
+wouldn't tell us anything real. What this pipeline actually owns is
+retrieval quality — that's what we assert on. Once a real LLM goes in,
+add an LLM-as-judge check on top: "is the answer supported by the
+citations?"
 """
 import json
 import sys
@@ -31,7 +32,8 @@ def main():
         docs = [c["meta"].get("doc_id") for c in res["citations"]]
         rec = g["expected_doc"] in docs if g["expected_doc"] else True
         if g["expected_doc"] is None:
-            # unanswerable question: the system must refuse, not retrieve
+            # deliberately unanswerable question: the system must say it
+            # doesn't know, not go rummaging for an answer anyway
             ev = "don't know" in res["answer"].lower()
         else:
             context = " ".join(c["text"] for c in res["citations"]).lower()
