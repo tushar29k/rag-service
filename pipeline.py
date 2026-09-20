@@ -1,7 +1,8 @@
 """RAGPipeline: chunk -> embed -> retrieve -> prompt -> generate.
 
-Every stage is timed. The `breakdown` in the result is what you'd ship to
-your latency dashboard — it's how you find which stage to optimise.
+Every stage is timed, and the `breakdown` in each result is the bit I'd
+actually ship to a latency dashboard — when answers get slow, this tells
+you which stage to blame first.
 """
 import hashlib
 import time
@@ -26,8 +27,11 @@ class Timer:
 
 
 def _mock_llm(question, context_chunks):
-    """Extractive stand-in: returns the 2 sentences with highest keyword
-    overlap with the question; refuses when nothing retrieved.
+    """Stand-in for the LLM: quotes the 2-3 sentences with the most word
+    overlap with the question. Refuses when retrieval came back empty.
+
+    It's dumb on purpose — negation and synthesis are exactly what a real
+    model buys you over this.
 
     # SWAP (production): call your LLM here —
     #   answer = openai.chat.completions.create(model=..., messages=[...])
@@ -63,7 +67,11 @@ class RAGPipeline:
         return hashlib.sha256(text.encode()).hexdigest()[:16]
 
     def index_documents(self, docs):
-        """docs: [{text, metadata}]. Returns chunk count. Idempotent via hash."""
+        """Index a batch of {text, metadata} docs.
+
+        Returns how many NEW chunks were added — re-indexing the same docs
+        is a no-op thanks to content hashing.
+        """
         all_chunks, all_metas = [], []
         for doc in docs:
             for i, ch in enumerate(chunk_text(
@@ -71,7 +79,8 @@ class RAGPipeline:
                 all_metas.append({**doc.get("metadata", {}),
                                   "chunk": i, "hash": self._hash(ch)})
                 all_chunks.append(ch)
-        # dedupe: same content hash already indexed -> skip
+        # cheap trick: dedupe on content hash, so re-running the indexer
+        # over the same docs doesn't pile up duplicates
         seen = {m["hash"] for m in self.store.metas}
         new = [(t, m) for t, m in zip(all_chunks, all_metas)
                if m["hash"] not in seen]
@@ -79,13 +88,14 @@ class RAGPipeline:
             return 0
         texts = [t for t, _ in new]
         if not self._fitted:
-            self.embedder.fit(texts)     # learn IDF on first batch
+            self.embedder.fit(texts)     # learn IDF from the first batch only
             self._fitted = True
         embs = self.embedder.transform(texts)
         self.store.upsert(texts, embs, [m for _, m in new])
         return len(new)
 
     def build_prompt(self, question, retrieved):
+        # numbered citations like [1] so the answer can point at its sources
         context = "\n\n".join(
             f"[{i+1}] {text}" for i, (text, _, _) in enumerate(retrieved))
         return f"""Answer the question using ONLY the context below. If the
@@ -103,9 +113,11 @@ Answer:"""
         q_emb = self.embedder.transform([question])[0]
         t.mark("embed")
         retrieved = self.store.search(q_emb, top_k=top_k, filters=filters)
-        # RELEVANCE THRESHOLD: brute force always returns *something*.
-        # In production, scores below this mean "nothing relevant" — without
-        # it, the generator happily answers from irrelevant chunks.
+        # Brute-force search always returns *something*, even for nonsense
+        # questions. This threshold turns low-score retrievals into
+        # "nothing relevant" so the generator refuses instead of answering
+        # off a junk chunk. Tuned by hand against the golden set — re-tune
+        # it if the corpus changes.
         min_score = self.cfg.get("min_score", 0.15)
         retrieved = [(tx, s, m) for tx, s, m in retrieved if s >= min_score]
         t.mark("retrieve")
