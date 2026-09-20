@@ -1,9 +1,9 @@
 """HTTP service over RAGPipeline. Run: uvicorn service:app --reload
 
 Endpoints:
-  POST /index  {text, metadata}      -> chunk + embed + upsert
+  POST /index  {text, metadata}         -> chunk + embed + upsert
   POST /query  {text, filters?, top_k?} -> grounded answer + citations + timings
-  GET  /health                       -> index version + chunk count
+  GET  /health                          -> index version + chunk count
 """
 try:
     from fastapi import FastAPI
@@ -13,7 +13,8 @@ except ImportError as e:
 
 from pipeline import RAGPipeline
 
-rag = RAGPipeline()          # loaded ONCE at startup — never per request
+rag = RAGPipeline()   # built once at import — rebuilding per request
+                      # would re-index everything and be painfully slow
 app = FastAPI(title="rag-service")
 
 
