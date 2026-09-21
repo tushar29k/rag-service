@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>rag-service — demo</title>
+<style>
+:root{--bg:#0B1424;--bg2:#0E1A2E;--line:#182742;--cyan:#22D3EE;--teal:#2DD4BF;--violet:#A78BFA;--text:#E6EDF3;--muted:#8B98A9}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;line-height:1.6;padding:2rem 1.2rem;max-width:860px;margin:0 auto}
+header{display:flex;align-items:center;gap:.8rem;margin-bottom:1.6rem}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--teal);box-shadow:0 0 10px var(--teal)}
+h1{font-size:1.4rem;letter-spacing:.5px}
+h1 span{color:var(--cyan)}
+.sub{color:var(--muted);font-size:.9rem;margin-bottom:1.6rem}
+.tabs{display:flex;gap:.6rem;margin-bottom:1.4rem}
+.tabs button{background:var(--bg2);border:1px solid var(--line);color:var(--muted);padding:.55rem 1.2rem;border-radius:999px;cursor:pointer;font-size:.9rem}
+.tabs button.active{color:var(--cyan);border-color:var(--cyan)}
+textarea,input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:.8rem;font-size:.95rem;font-family:inherit}
+textarea{min-height:120px;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--cyan)}
+.row{display:flex;gap:1rem;align-items:center;margin:.9rem 0;flex-wrap:wrap}
+label{color:var(--muted);font-size:.85rem}
+input[type=number]{width:70px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:.5rem}
+button.go{background:linear-gradient(90deg,var(--cyan),var(--teal));border:none;color:#06222b;font-weight:700;padding:.7rem 1.6rem;border-radius:999px;cursor:pointer;font-size:.95rem}
+button.go:disabled{opacity:.5;cursor:wait}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:1.2rem;margin-top:1.2rem;animation:fade .4s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}}
+.answer{font-size:1.02rem}
+.meta{color:var(--muted);font-size:.8rem;margin-top:.7rem}
+.cite{border-left:3px solid var(--violet);padding:.5rem .8rem;margin:.7rem 0;background:rgba(167,139,250,.06);border-radius:0 8px 8px 0;font-size:.9rem}
+.cite .score{color:var(--cyan);font-size:.78rem;font-weight:700}
+.err{color:#F472B6;margin-top:1rem}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header><span class="dot" id="health"></span><h1>rag-service <span>demo</span></h1></header>
+<p class="sub">Index documents, then ask questions — answers come back grounded with citations and timings.</p>
+
+<div class="tabs">
+  <button id="tab-ask" class="active" onclick="show('ask')">Ask</button>
+  <button id="tab-index" onclick="show('index')">Index a document</button>
+</div>
+
+<div id="pane-ask">
+  <textarea id="q" placeholder="Ask something about your indexed documents…"></textarea>
+  <div class="row">
+    <label>top_k <input type="number" id="topk" value="3" min="1" max="10"></label>
+    <button class="go" id="askbtn" onclick="ask()">Ask →</button>
+  </div>
+  <div id="out"></div>
+</div>
+
+<div id="pane-index" class="hidden">
+  <textarea id="doctext" placeholder="Paste document text to index…"></textarea>
+  <div class="row"><button class="go" id="idxbtn" onclick="indexDoc()">Index document →</button></div>
+  <div id="idxout"></div>
+</div>
+
+<script>
+function show(which){
+  ['ask','index'].forEach(function(w){
+    document.getElementById('pane-'+w).classList.toggle('hidden', w!==which);
+    document.getElementById('tab-'+w).classList.toggle('active', w===which);
+  });
+}
+fetch('/health').then(function(r){return r.json()}).then(function(h){
+  document.getElementById('health').classList.add('ok');
+  document.getElementById('health').title = h.chunks + ' chunks indexed';
+}).catch(function(){});
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+
+function ask(){
+  var btn=document.getElementById('askbtn'); btn.disabled=true; btn.textContent='Thinking…';
+  var out=document.getElementById('out'); out.innerHTML='';
+  fetch('/query',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:document.getElementById('q').value,top_k:parseInt(document.getElementById('topk').value)||3})})
+  .then(function(r){return r.json()}).then(function(d){
+    var html='<div class="card"><div class="answer">'+esc(d.answer)+'</div><div class="meta">'+d.latency_ms+' ms · index v'+d.index_version+'</div>';
+    (d.citations||[]).forEach(function(c){
+      html+='<div class="cite"><span class="score">score '+c.score+'</span><br>'+esc(c.text)+'</div>';
+    });
+    out.innerHTML=html+'</div>';
+  }).catch(function(e){out.innerHTML='<p class="err">Error: '+esc(e.message)+'</p>'})
+  .finally(function(){btn.disabled=false;btn.textContent='Ask →'});
+}
+
+function indexDoc(){
+  var btn=document.getElementById('idxbtn'); btn.disabled=true; btn.textContent='Indexing…';
+  var out=document.getElementById('idxout'); out.innerHTML='';
+  fetch('/index',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:document.getElementById('doctext').value,metadata:{source:'demo-ui'}})})
+  .then(function(r){return r.json()}).then(function(d){
+    out.innerHTML='<div class="card">Indexed <b style="color:var(--cyan)">'+d.chunks_indexed+'</b> chunks · '+d.total_chunks+' total in index.</div>';
+    document.getElementById('doctext').value='';
+  }).catch(function(e){out.innerHTML='<p class="err">Error: '+esc(e.message)+'</p>'})
+  .finally(function(){btn.disabled=false;btn.textContent='Index document →'});
+}
+</script>
+</body>
+</html>

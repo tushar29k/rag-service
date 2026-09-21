@@ -36,3 +36,16 @@ def query(q: dict):
 def health():
     return {"status": "ok", "index_version": rag.index_version,
             "chunks": len(rag.store)}
+
+# -- demo ui -----------------------------------------------------------------
+# open / in a browser to click through the api instead of curling it.
+import os as _os
+from fastapi.responses import FileResponse as _FileResponse
+
+_UI_INDEX = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "ui", "index.html")
+
+
+@app.get("/", include_in_schema=False)
+def _demo_ui():
+    return _FileResponse(_UI_INDEX)
+
