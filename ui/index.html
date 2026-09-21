@@ -3,41 +3,122 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>rag-service — demo</title>
+<title>rag-service — The Archive demo</title>
 <style>
-:root{--bg:#0B1424;--bg2:#0E1A2E;--line:#182742;--cyan:#22D3EE;--teal:#2DD4BF;--violet:#A78BFA;--text:#E6EDF3;--muted:#8B98A9}
+/* the archive: a warm card-catalog reading room. paper tones, brass and
+   amber accents, serif type. texture comes from layered gradients only. */
+:root{
+  --paper:#f3ead3; --paper2:#ece0c2; --card:#fbf5e4;
+  --ink:#2f2415; --muted:#7c6a4e; --faint:#a8946f;
+  --amber:#b45309; --gold:#c9a227; --brass:#8a6d3b;
+  --line:#d8c69c; --red:#a33b2e;
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;line-height:1.6;padding:2rem 1.2rem;max-width:860px;margin:0 auto}
-header{display:flex;align-items:center;gap:.8rem;margin-bottom:1.6rem}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
-.dot.ok{background:var(--teal);box-shadow:0 0 10px var(--teal)}
-h1{font-size:1.4rem;letter-spacing:.5px}
-h1 span{color:var(--cyan)}
-.sub{color:var(--muted);font-size:.9rem;margin-bottom:1.6rem}
-.tabs{display:flex;gap:.6rem;margin-bottom:1.4rem}
-.tabs button{background:var(--bg2);border:1px solid var(--line);color:var(--muted);padding:.55rem 1.2rem;border-radius:999px;cursor:pointer;font-size:.9rem}
-.tabs button.active{color:var(--cyan);border-color:var(--cyan)}
-textarea,input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:.8rem;font-size:.95rem;font-family:inherit}
+body{
+  color:var(--ink);
+  font-family:Georgia,'Palatino Linotype','Book Antiqua',serif;
+  line-height:1.65; padding:2.2rem 1.2rem 3rem;
+  max-width:880px; margin:0 auto; min-height:100vh;
+  /* faint paper grain: hairlines + a soft amber wash */
+  background:
+    repeating-linear-gradient(0deg, rgba(120,90,40,.028) 0 1px, transparent 1px 4px),
+    radial-gradient(ellipse 90% 40% at 50% -5%, rgba(201,162,39,.14), transparent 60%),
+    radial-gradient(ellipse 70% 35% at 50% 110%, rgba(138,109,59,.10), transparent 60%),
+    var(--paper);
+}
+/* ---- masthead ---- */
+header{display:flex;align-items:baseline;gap:.9rem;flex-wrap:wrap;margin-bottom:.4rem}
+.lamp{width:11px;height:11px;border-radius:50%;background:var(--faint);align-self:center;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.25);transition:all .4s}
+.lamp.ok{background:#4d7c0f;box-shadow:0 0 12px rgba(77,124,15,.8)} /* lit when /health answers */
+h1{font-size:1.9rem;font-weight:700;letter-spacing:.5px}
+h1 .thin{font-weight:400;font-style:italic;color:var(--brass);font-size:1.25rem}
+.kicker{font-size:.72rem;letter-spacing:4px;text-transform:uppercase;color:var(--muted);margin-bottom:1.4rem}
+.kicker::after{content:'';display:block;margin-top:.55rem;height:1px;
+  background:linear-gradient(90deg,var(--gold),transparent)}
+/* rule with a fleuron, like a book ornament */
+.rule{text-align:center;color:var(--brass);margin:1.6rem 0 .4rem;letter-spacing:6px;font-size:.9rem}
+.rule::before,.rule::after{content:'';display:inline-block;width:34%;height:1px;background:var(--line);
+  vertical-align:middle;margin:0 .8rem}
+/* ---- drawer-label tabs ---- */
+.tabs{display:flex;gap:.7rem;margin:1rem 0 1.5rem}
+.tabs button{
+  font-family:inherit;background:var(--paper2);color:var(--muted);
+  border:1px solid var(--line);border-bottom:3px solid var(--line);
+  padding:.55rem 1.4rem;border-radius:6px 6px 0 0;cursor:pointer;
+  font-size:.82rem;letter-spacing:2.5px;text-transform:uppercase;
+}
+.tabs button.active{color:var(--ink);border-bottom-color:var(--amber);background:var(--card);
+  box-shadow:0 -3px 8px rgba(138,109,59,.12)}
+/* ---- forms ---- */
+textarea,input[type=text]{
+  width:100%;background:var(--card);border:1px solid var(--line);border-radius:4px;
+  color:var(--ink);padding:.9rem 1rem;font-size:1rem;font-family:inherit;
+  box-shadow:inset 0 2px 6px rgba(138,109,59,.10);
+}
 textarea{min-height:120px;resize:vertical}
-textarea:focus,input:focus{outline:none;border-color:var(--cyan)}
-.row{display:flex;gap:1rem;align-items:center;margin:.9rem 0;flex-wrap:wrap}
-label{color:var(--muted);font-size:.85rem}
-input[type=number]{width:70px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:.5rem}
-button.go{background:linear-gradient(90deg,var(--cyan),var(--teal));border:none;color:#06222b;font-weight:700;padding:.7rem 1.6rem;border-radius:999px;cursor:pointer;font-size:.95rem}
-button.go:disabled{opacity:.5;cursor:wait}
-.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:1.2rem;margin-top:1.2rem;animation:fade .4s ease}
-@keyframes fade{from{opacity:0;transform:translateY(8px)}}
-.answer{font-size:1.02rem}
-.meta{color:var(--muted);font-size:.8rem;margin-top:.7rem}
-.cite{border-left:3px solid var(--violet);padding:.5rem .8rem;margin:.7rem 0;background:rgba(167,139,250,.06);border-radius:0 8px 8px 0;font-size:.9rem}
-.cite .score{color:var(--cyan);font-size:.78rem;font-weight:700}
-.err{color:#F472B6;margin-top:1rem}
+textarea:focus,input:focus{outline:none;border-color:var(--amber);box-shadow:inset 0 2px 6px rgba(138,109,59,.10),0 0 0 2px rgba(180,83,9,.15)}
+.row{display:flex;gap:1rem;align-items:center;margin:1rem 0;flex-wrap:wrap}
+label{color:var(--muted);font-size:.85rem;font-style:italic}
+input[type=number]{width:74px;background:var(--card);border:1px solid var(--line);border-radius:4px;
+  color:var(--ink);padding:.5rem;font-family:inherit;font-size:.95rem}
+/* brass plate button, like a catalog drawer pull */
+button.go{
+  font-family:inherit;letter-spacing:2px;text-transform:uppercase;font-size:.82rem;font-weight:700;
+  color:#fdf6e0;background:linear-gradient(180deg,#a37c3a,#7d5f2c);
+  border:1px solid #6b5225;border-radius:6px;padding:.75rem 1.7rem;cursor:pointer;
+  box-shadow:0 3px 0 #5d4720,0 5px 10px rgba(93,71,32,.25);
+}
+button.go:active{transform:translateY(2px);box-shadow:0 1px 0 #5d4720}
+button.go:disabled{opacity:.55;cursor:wait;transform:none}
+/* ---- answer: an index card with a red ledger rule ---- */
+.card{
+  background:
+    linear-gradient(90deg, transparent 44px, rgba(163,59,46,.35) 44px, rgba(163,59,46,.35) 46px, transparent 46px),
+    var(--card);
+  border:1px solid var(--line);border-radius:3px;padding:1.3rem 1.3rem 1.3rem 3.6rem;
+  margin-top:1.4rem;box-shadow:0 6px 18px rgba(93,71,32,.14);animation:cardin .45s ease;
+}
+@keyframes cardin{from{opacity:0;transform:translateY(10px)}}
+.answer{font-size:1.06rem}
+/* drop cap, because an archive answer deserves one */
+.answer::first-letter{font-size:2.6em;float:left;line-height:.9;padding-right:.35rem;color:var(--amber)}
+/* due-date slip for latency + index version */
+.meta{margin-top:.9rem;font-size:.78rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.meta b{color:var(--amber)}
+/* ---- citations: little catalog cards ---- */
+.cite{
+  background:var(--paper);border:1px solid var(--line);border-radius:3px;
+  padding:.8rem 1rem;margin:.9rem 0;font-size:.92rem;
+  box-shadow:0 3px 8px rgba(93,71,32,.10);position:relative;
+}
+/* punched hole, like a real catalog card */
+.cite::before{content:'';position:absolute;top:.7rem;right:.9rem;width:9px;height:9px;border-radius:50%;
+  background:var(--paper);box-shadow:inset 0 1px 3px rgba(0,0,0,.35)}
+.cite .catno{font-size:.68rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:.35rem}
+/* rubber-stamp score chip, slightly crooked on purpose */
+.cite .score{
+  display:inline-block;border:2px solid var(--amber);color:var(--amber);border-radius:4px;
+  padding:.05rem .55rem;font-size:.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  transform:rotate(-2deg);margin-bottom:.4rem;background:rgba(180,83,9,.06);
+}
+.cite:nth-child(odd) .score{transform:rotate(1.6deg)}
+.err{color:var(--red);margin-top:1rem;font-style:italic}
 .hidden{display:none}
+footer{margin-top:3rem;text-align:center;color:var(--faint);font-size:.75rem;letter-spacing:2.5px;text-transform:uppercase}
+@media (max-width:560px){
+  body{padding:1.4rem .9rem 2.4rem}
+  h1{font-size:1.5rem}
+  .card{padding:1.1rem 1rem 1.1rem 2.9rem}
+  button.go{width:100%}
+}
 </style>
 </head>
 <body>
-<header><span class="dot" id="health"></span><h1>rag-service <span>demo</span></h1></header>
-<p class="sub">Index documents, then ask questions — answers come back grounded with citations and timings.</p>
+<header><span class="lamp" id="health"></span><h1>The Archive <span class="thin">— rag-service reading room</span></h1></header>
+<p class="kicker">retrieval · grounded answers · shelf mark rag-service</p>
+
+<div class="rule">❦</div>
 
 <div class="tabs">
   <button id="tab-ask" class="active" onclick="show('ask')">Ask</button>
@@ -45,19 +126,22 @@ button.go:disabled{opacity:.5;cursor:wait}
 </div>
 
 <div id="pane-ask">
-  <textarea id="q" placeholder="Ask something about your indexed documents…"></textarea>
+  <textarea id="q" placeholder="Pose your question to the archive…"></textarea>
   <div class="row">
-    <label>top_k <input type="number" id="topk" value="3" min="1" max="10"></label>
-    <button class="go" id="askbtn" onclick="ask()">Ask →</button>
+    <label>passages retrieved <input type="number" id="topk" value="3" min="1" max="10"></label>
+    <button class="go" id="askbtn" onclick="ask()">Consult the archive</button>
   </div>
   <div id="out"></div>
 </div>
 
 <div id="pane-index" class="hidden">
-  <textarea id="doctext" placeholder="Paste document text to index…"></textarea>
-  <div class="row"><button class="go" id="idxbtn" onclick="indexDoc()">Index document →</button></div>
+  <textarea id="doctext" placeholder="Transcribe a document into the archive…"></textarea>
+  <div class="row"><button class="go" id="idxbtn" onclick="indexDoc()">Shelve document</button></div>
   <div id="idxout"></div>
 </div>
+
+<div class="rule">❦</div>
+<footer>every answer cites its shelf · nothing leaves the reading room ungrounded</footer>
 
 <script>
 function show(which){
@@ -68,36 +152,36 @@ function show(which){
 }
 fetch('/health').then(function(r){return r.json()}).then(function(h){
   document.getElementById('health').classList.add('ok');
-  document.getElementById('health').title = h.chunks + ' chunks indexed';
+  document.getElementById('health').title = h.chunks + ' passages on the shelves';
 }).catch(function(){});
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 
 function ask(){
-  var btn=document.getElementById('askbtn'); btn.disabled=true; btn.textContent='Thinking…';
+  var btn=document.getElementById('askbtn'); btn.disabled=true; btn.textContent='Consulting…';
   var out=document.getElementById('out'); out.innerHTML='';
   fetch('/query',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:document.getElementById('q').value,top_k:parseInt(document.getElementById('topk').value)||3})})
   .then(function(r){return r.json()}).then(function(d){
-    var html='<div class="card"><div class="answer">'+esc(d.answer)+'</div><div class="meta">'+d.latency_ms+' ms · index v'+d.index_version+'</div>';
-    (d.citations||[]).forEach(function(c){
-      html+='<div class="cite"><span class="score">score '+c.score+'</span><br>'+esc(c.text)+'</div>';
+    var html='<div class="card"><div class="answer">'+esc(d.answer)+'</div><div class="meta">retrieved in <b>'+d.latency_ms+' ms</b> · catalogue v'+d.index_version+'</div>';
+    (d.citations||[]).forEach(function(c,i){
+      html+='<div class="cite"><span class="catno">catalogue card '+(i+1)+'</span><span class="score">score '+c.score+'</span><br>'+esc(c.text)+'</div>';
     });
     out.innerHTML=html+'</div>';
-  }).catch(function(e){out.innerHTML='<p class="err">Error: '+esc(e.message)+'</p>'})
-  .finally(function(){btn.disabled=false;btn.textContent='Ask →'});
+  }).catch(function(e){out.innerHTML='<p class="err">The archive is closed for repairs: '+esc(e.message)+'</p>'})
+  .finally(function(){btn.disabled=false;btn.textContent='Consult the archive'});
 }
 
 function indexDoc(){
-  var btn=document.getElementById('idxbtn'); btn.disabled=true; btn.textContent='Indexing…';
+  var btn=document.getElementById('idxbtn'); btn.disabled=true; btn.textContent='Shelving…';
   var out=document.getElementById('idxout'); out.innerHTML='';
   fetch('/index',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:document.getElementById('doctext').value,metadata:{source:'demo-ui'}})})
   .then(function(r){return r.json()}).then(function(d){
-    out.innerHTML='<div class="card">Indexed <b style="color:var(--cyan)">'+d.chunks_indexed+'</b> chunks · '+d.total_chunks+' total in index.</div>';
+    out.innerHTML='<div class="card">Shelved <b>'+d.chunks_indexed+'</b> passages · '+d.total_chunks+' on the shelves in total.</div>';
     document.getElementById('doctext').value='';
-  }).catch(function(e){out.innerHTML='<p class="err">Error: '+esc(e.message)+'</p>'})
-  .finally(function(){btn.disabled=false;btn.textContent='Index document →'});
+  }).catch(function(e){out.innerHTML='<p class="err">The archive is closed for repairs: '+esc(e.message)+'</p>'})
+  .finally(function(){btn.disabled=false;btn.textContent='Shelve document'});
 }
 </script>
 </body>
