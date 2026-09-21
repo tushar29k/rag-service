@@ -2,6 +2,11 @@
 
 A retrieval-augmented generation (RAG) system built like the real thing — chunking, embeddings, a vector store, retrieval, grounded answers with citations — but with zero API keys and zero GPU, so you can actually run the whole loop on your laptop.
 
+## Live demo
+
+**[https://tushar29k-rag-service.onrender.com](https://tushar29k-rag-service.onrender.com)** — Index documents and ask questions — answers come back with citations, retrieval scores, and per-stage latency.
+> Hosted on Render's free tier — the first visit after a while can take ~30s while the instance wakes up.
+
 ## The idea
 
 Most RAG tutorials stop at "embed the docs, search, done". The interesting part of production RAG is everything around that: how you chunk documents, how you *measure* whether retrieval is any good, how latency breaks down per stage, and how you stop the model from confidently answering out of irrelevant chunks. This project is a complete, runnable loop — index documents, ask questions, get grounded answers with citations and per-stage timings — where every heavyweight piece has a clearly marked swap point for its production equivalent.
