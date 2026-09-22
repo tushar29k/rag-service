@@ -9,7 +9,7 @@ import time
 import yaml
 
 from chunker import chunk_text
-from embedder import TfidfEmbedder
+from embedder import build_embedder
 from store import VectorStore
 
 
@@ -57,8 +57,10 @@ def _mock_llm(question, context_chunks):
 class RAGPipeline:
     def __init__(self, config_path="config.yaml"):
         self.cfg = yaml.safe_load(open(config_path))
-        self.embedder = TfidfEmbedder(dim=self.cfg.get("embed_dim", 2048))
-        self.store = VectorStore(dim=self.cfg.get("embed_dim", 2048))
+        self.embedder = build_embedder(self.cfg)
+        # store sized from the embedder, not from config — st's 384 dims and
+        # hashing's embed_dim are different animals
+        self.store = VectorStore(dim=self.embedder.dim)
         self.index_version = self.cfg.get("index_version", "v1")
         self._fitted = False
 

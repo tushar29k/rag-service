@@ -2,3 +2,4 @@ numpy
 pyyaml
 fastapi
 uvicorn
+# sentence-transformers  # production swap: real embeddings (embedder_backend: st)
