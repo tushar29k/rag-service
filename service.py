@@ -22,7 +22,7 @@ app = FastAPI(title="rag-service")
 def index(doc: dict):
     n = rag.index_documents([{"text": doc["text"],
                               "metadata": doc.get("metadata", {})}])
-    return {"chunks_indexed": n, "total_chunks": len(rag.store),
+    return {"chunks_indexed": n, "total_chunks": len(rag.retriever),
             "index_version": rag.index_version}
 
 
@@ -35,7 +35,7 @@ def query(q: dict):
 @app.get("/health")
 def health():
     return {"status": "ok", "index_version": rag.index_version,
-            "chunks": len(rag.store)}
+            "chunks": len(rag.retriever)}
 
 # -- demo ui -----------------------------------------------------------------
 # open / in a browser to click through the api instead of curling it.

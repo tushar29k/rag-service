@@ -9,8 +9,7 @@ import time
 import yaml
 
 from chunker import chunk_text
-from embedder import build_embedder
-from store import VectorStore
+from retriever import build_retriever
 
 
 class Timer:
@@ -55,14 +54,16 @@ def _mock_llm(question, context_chunks):
 
 
 class RAGPipeline:
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="config.yaml", overrides=None):
         self.cfg = yaml.safe_load(open(config_path))
-        self.embedder = build_embedder(self.cfg)
-        # store sized from the embedder, not from config — st's 384 dims and
-        # hashing's embed_dim are different animals
-        self.store = VectorStore(dim=self.embedder.dim)
+        if overrides:
+            # lets evals/cli run one backend without editing config.yaml
+            self.cfg.update({k: v for k, v in overrides.items()
+                             if v is not None})
+        # dense or bm25 behind the same interface — the pipeline stages
+        # below don't know or care which one is wired in
+        self.retriever = build_retriever(self.cfg)
         self.index_version = self.cfg.get("index_version", "v1")
-        self._fitted = False
 
     @staticmethod
     def _hash(text):
@@ -83,17 +84,13 @@ class RAGPipeline:
                 all_chunks.append(ch)
         # cheap trick: dedupe on content hash, so re-running the indexer
         # over the same docs doesn't pile up duplicates
-        seen = {m["hash"] for m in self.store.metas}
+        seen = {m["hash"] for m in self.retriever.metas}
         new = [(t, m) for t, m in zip(all_chunks, all_metas)
                if m["hash"] not in seen]
         if not new:
             return 0
         texts = [t for t, _ in new]
-        if not self._fitted:
-            self.embedder.fit(texts)     # learn IDF from the first batch only
-            self._fitted = True
-        embs = self.embedder.transform(texts)
-        self.store.upsert(texts, embs, [m for _, m in new])
+        self.retriever.index(texts, [m for _, m in new])
         return len(new)
 
     def build_prompt(self, question, retrieved):
@@ -112,9 +109,11 @@ Answer:"""
     def answer(self, question, filters=None, top_k=None):
         top_k = top_k or self.cfg.get("top_k", 3)
         t = Timer()
-        q_emb = self.embedder.transform([question])[0]
+        # embed = vectorise for dense, tokenise for bm25 — the "embed" stage
+        # means "turn the question into what the retriever eats"
+        q = self.retriever.embed(question)
         t.mark("embed")
-        retrieved = self.store.search(q_emb, top_k=top_k, filters=filters)
+        retrieved = self.retriever.search(q, top_k=top_k, filters=filters)
         # Brute-force search always returns *something*, even for nonsense
         # questions. This threshold turns low-score retrievals into
         # "nothing relevant" so the generator refuses instead of answering

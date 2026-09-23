@@ -8,6 +8,11 @@ top_k: 3
 # Tuned on evals/golden.jsonl, not derived. Re-tune when the corpus changes.
 min_score: 0.15
 
+# Retriever backend: "dense" (default, embeddings + cosine) or "bm25"
+# (rank-bm25 sparse keyword retrieval). Both answer the same interface,
+# so pipeline.py, service.py and the evals work unchanged either way.
+retriever: dense
+
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and
 # falls back to hashing with a log line if the package or model is

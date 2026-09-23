@@ -2,4 +2,5 @@ numpy
 pyyaml
 fastapi
 uvicorn
+rank-bm25  # sparse retriever backend (retriever: bm25)
 # sentence-transformers  # production swap: real embeddings (embedder_backend: st)

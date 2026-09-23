@@ -1,6 +1,6 @@
 """Eval runner: recall@k + evidence coverage on the golden set.
 
-    python3 evals/run_eval.py
+    python3 evals/run_eval.py [--retriever dense|bm25]
 
 What it checks, per question:
   recall@3  — did we retrieve the right document in the top 3?
@@ -13,6 +13,7 @@ retrieval quality — that's what we assert on. Once a real LLM goes in,
 add an LLM-as-judge check on top: "is the answer supported by the
 citations?"
 """
+import argparse
 import json
 import sys
 
@@ -21,7 +22,13 @@ from pipeline import RAGPipeline
 
 
 def main():
-    rag = RAGPipeline()
+    ap = argparse.ArgumentParser()
+    # run the same golden set against either backend without editing config
+    ap.add_argument("--retriever", choices=("dense", "bm25"), default=None)
+    args = ap.parse_args()
+
+    rag = RAGPipeline(overrides={"retriever": args.retriever})
+    print(f"retriever backend: {rag.cfg.get('retriever', 'dense')}")
     rag.index_documents(json.load(open("data/sample_docs.json")))
     golden = [json.loads(l) for l in open("evals/golden.jsonl")]
 

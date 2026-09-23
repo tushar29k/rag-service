@@ -18,7 +18,7 @@ The pipeline lives in `pipeline.py` and runs five stages for every question:
 1. **Chunking** (`chunker.py`) — documents are split into overlapping word-windows (120 words, 20-word overlap by default). The overlap matters: a sentence straddling a boundary would otherwise get cut in half and the retriever could miss it entirely.
 2. **Embeddings** (`embedder.py`) — chunks are turned into vectors with a hashing TF-IDF embedder (see "Honest notes"). The interface is `fit`/`transform`, deliberately shaped like a real embedder so swapping one in is a one-class change.
 3. **Store** (`store.py`) — vectors go into a numpy brute-force store with metadata **pre**-filtering (filter first, score second — doing it the other way round silently kills recall). Same four-method interface as Qdrant/pgvector.
-4. **Retrieval** — the question is embedded, top-k chunks are pulled by cosine similarity, and anything scoring below a relevance threshold (`min_score`) is dropped so the generator refuses instead of hallucinating off a junk chunk.
+4. **Retrieval** — two backends behind one interface (`retriever.py`), picked with `retriever:` in config.yaml: `dense` embeds the question and pulls top-k chunks by cosine similarity, `bm25` scores keyword overlap with rank-bm25. Anything scoring below a relevance threshold (`min_score`) is dropped so the generator refuses instead of hallucinating off a junk chunk.
 5. **Generation** — an extractive mock picks the highest-overlap sentences from the retrieved chunks and cites them like `[1]`, following the grounded-generation prompt pattern a real LLM call would use.
 
 Every stage is timed, and the per-stage `breakdown` comes back with every answer — that's the bit you'd ship to a latency dashboard in production.
@@ -87,6 +87,7 @@ service.py          FastAPI wrapper: /index, /query, /health
 pipeline.py         RAGPipeline — index + answer, every stage timed
 chunker.py          overlapping word-window chunking
 embedder.py         hashing TF-IDF embedder (fit/transform)  ← swap for sentence-transformers
+retriever.py        dense (embedder + store) and bm25 backends, same interface  ← `retriever:` in config.yaml
 store.py            numpy brute-force store + metadata pre-filter  ← swap for Qdrant
 config.yaml         chunk size, overlap, top_k, min_score, index version
 data/sample_docs.json   the docs the demo indexes
@@ -102,6 +103,8 @@ evals/run_eval.py       recall@3 + evidence coverage + p50 latency
 - **evidence coverage** — do the retrieved chunks actually contain the answer keywords?
 
 It also reports p50 latency. Current numbers: **recall@3: 8/8, evidence: 8/8**. One of the 8 questions ("Who is the CEO?") is deliberately unanswerable — for that one, the check is that the system refuses instead of making something up. If you change chunking or retrieval settings, re-run this; it's the fastest way to see whether you helped or hurt.
+
+Run the same golden set against the BM25 backend with `python3 evals/run_eval.py --retriever bm25` (or set `retriever: bm25` in `config.yaml` to make it the default for the CLI and the API).
 
 ## Honest notes
 

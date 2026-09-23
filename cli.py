@@ -2,15 +2,23 @@
 
     python3 cli.py            # interactive Q&A
     python3 cli.py --demo     # 3 canned questions, with per-stage timings
+    python3 cli.py --demo --retriever bm25   # same, through the BM25 backend
 """
+import argparse
 import json
-import sys
 
 from pipeline import RAGPipeline
 
 
 def main():
-    rag = RAGPipeline()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--demo", action="store_true")
+    # run the demo questions through either backend without editing config
+    ap.add_argument("--retriever", choices=("dense", "bm25"), default=None)
+    args = ap.parse_args()
+
+    rag = RAGPipeline(overrides={"retriever": args.retriever})
+    print(f"retriever backend: {rag.cfg.get('retriever', 'dense')}")
     docs = json.load(open("data/sample_docs.json"))
     n = rag.index_documents(docs)
     print(f"indexed {n} chunks (version {rag.index_version})\n")
@@ -18,7 +26,7 @@ def main():
     questions = (["What is the refund window?",
                   "How long is maternity leave in India?",
                   "What does the warranty cover?"]
-                 if "--demo" in sys.argv else None)
+                 if args.demo else None)
 
     def ask(q):
         # demo nicety: everything is filtered to Indian policies so the
