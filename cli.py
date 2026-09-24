@@ -14,7 +14,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--demo", action="store_true")
     # run the demo questions through either backend without editing config
-    ap.add_argument("--retriever", choices=("dense", "bm25"), default=None)
+    ap.add_argument("--retriever", choices=("dense", "bm25", "hybrid"),
+                    default=None)
     args = ap.parse_args()
 
     rag = RAGPipeline(overrides={"retriever": args.retriever})

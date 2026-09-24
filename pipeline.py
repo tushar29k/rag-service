@@ -60,8 +60,8 @@ class RAGPipeline:
             # lets evals/cli run one backend without editing config.yaml
             self.cfg.update({k: v for k, v in overrides.items()
                              if v is not None})
-        # dense or bm25 behind the same interface — the pipeline stages
-        # below don't know or care which one is wired in
+        # dense, bm25 or hybrid behind the same interface — the pipeline
+        # stages below don't know or care which one is wired in
         self.retriever = build_retriever(self.cfg)
         self.index_version = self.cfg.get("index_version", "v1")
 

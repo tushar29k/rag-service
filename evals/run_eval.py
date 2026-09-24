@@ -1,6 +1,6 @@
 """Eval runner: recall@k + evidence coverage on the golden set.
 
-    python3 evals/run_eval.py [--retriever dense|bm25]
+    python3 evals/run_eval.py [--retriever dense|bm25|hybrid]
 
 What it checks, per question:
   recall@3  — did we retrieve the right document in the top 3?
@@ -24,7 +24,8 @@ from pipeline import RAGPipeline
 def main():
     ap = argparse.ArgumentParser()
     # run the same golden set against either backend without editing config
-    ap.add_argument("--retriever", choices=("dense", "bm25"), default=None)
+    ap.add_argument("--retriever", choices=("dense", "bm25", "hybrid"),
+                    default=None)
     args = ap.parse_args()
 
     rag = RAGPipeline(overrides={"retriever": args.retriever})

@@ -8,10 +8,20 @@ top_k: 3
 # Tuned on evals/golden.jsonl, not derived. Re-tune when the corpus changes.
 min_score: 0.15
 
-# Retriever backend: "dense" (default, embeddings + cosine) or "bm25"
-# (rank-bm25 sparse keyword retrieval). Both answer the same interface,
-# so pipeline.py, service.py and the evals work unchanged either way.
+# Retriever backend: "dense" (default, embeddings + cosine), "bm25"
+# (rank-bm25 sparse keyword retrieval), or "hybrid" (reciprocal rank
+# fusion of both — keyword-exact and fuzzy matches reinforce each other).
+# All three answer the same interface, so pipeline.py, service.py and the
+# evals work unchanged either way.
 retriever: dense
+
+# Hybrid fusion weights (only used when retriever: hybrid):
+# hybrid_alpha weighs the dense list's ranks, (1 - alpha) the BM25 list's.
+# 0.5 = even; 1.0 = dense only; 0.0 = BM25 only.
+hybrid_alpha: 0.5
+# how many candidates each backend contributes to the fusion before the
+# top_k cut — RRF needs depth to see where the backends agree/disagree
+hybrid_depth: 20
 
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and

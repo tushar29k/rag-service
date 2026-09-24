@@ -1,7 +1,8 @@
-"""Retrieval backends: dense (embeddings + cosine) and BM25 (sparse keywords).
+"""Retrieval backends: dense (embeddings + cosine), BM25 (sparse keywords),
+and hybrid (reciprocal rank fusion of the two).
 
-Both backends answer the same interface, so pipeline.py never knows which
-one is behind it — and hybrid fusion later is just a third backend:
+All three answer the same interface, so pipeline.py never knows which
+one is behind it:
     index(texts, metas)         # add chunks
     embed(question)             # question -> backend-native representation
     search(q, top_k, filters)    # [(text, score, meta)] best first, scores in [0, 1]
@@ -122,12 +123,83 @@ def build_retriever(cfg):
     """Pick the retriever backend from config.yaml.
 
     "dense" is the default (embeddings + cosine). "bm25" is the sparse
-    keyword path. Anything unrecognised falls back to dense — a typo in
-    config shouldn't take the service down.
+    keyword path. "hybrid" fuses both with reciprocal rank fusion —
+    keyword-exact and fuzzy matches reinforce instead of competing.
+    Anything unrecognised falls back to dense — a typo in config
+    shouldn't take the service down.
     """
-    if cfg.get("retriever") == "bm25":
+    name = cfg.get("retriever")
+    if name == "bm25":
         return BM25Retriever(cfg)
+    if name == "hybrid":
+        return HybridRetriever(cfg)
     return DenseRetriever(cfg)
+
+
+class HybridRetriever:
+    """Reciprocal rank fusion of dense + BM25 over one shared corpus.
+
+    Each backend ranks its own deep list, then ranks are fused as
+    alpha/(k+rank) for dense + (1-alpha)/(k+rank) for BM25. Scores are
+    normalised by the max possible fused score (rank 1 in both lists =
+    1/(k+1)), so they land in [0, 1] and pipeline's min_score gate
+    behaves the same as for the single backends.
+
+    Each sub-list is pre-gated at min_score before fusion. Without that,
+    junk queries still produce ranks (1..N everywhere) and RRF would fuse
+    them into passing scores — defeating the "I don't know" refusal the
+    evals assert on. The gate keeps each backend honest first, fusion
+    only re-orders the survivors.
+    """
+
+    def __init__(self, cfg):
+        self._dense = DenseRetriever(cfg)
+        # raises ImportError if rank-bm25 isn't installed — hybrid needs it
+        self._sparse = BM25Retriever(cfg)
+        self.alpha = float(cfg.get("hybrid_alpha", 0.5))
+        self.k = 60       # RRF damping: bigger k flattens rank differences
+        self.depth = int(cfg.get("hybrid_depth", 20))  # per-list fuse depth
+        self.min_score = float(cfg.get("min_score", 0.15))
+
+    @property
+    def metas(self):
+        return self._dense.metas   # one corpus, indexed in lockstep
+
+    def index(self, texts, metas):
+        self._dense.index(texts, metas)
+        self._sparse.index(texts, metas)
+
+    def embed(self, question):
+        return (self._dense.embed(question),   # dense vector
+                self._sparse.embed(question))  # sparse tokens
+
+    def search(self, q, top_k=5, filters=None):
+        q_emb, q_tok = q
+        # fuse deep lists, return the shallow top_k — RRF needs the depth
+        # to see where the backends agree and disagree
+        dense = [(t, s, m) for t, s, m in
+                 self._dense.search(q_emb, top_k=self.depth, filters=filters)
+                 if s >= self.min_score]
+        sparse = [(t, s, m) for t, s, m in
+                  self._sparse.search(q_tok, top_k=self.depth, filters=filters)
+                  if s >= self.min_score]
+        if not dense and not sparse:
+            return []
+        fused = {}   # chunk key -> [fused score, text, meta]
+        for weight, ranked in ((self.alpha, dense), (1 - self.alpha, sparse)):
+            for rank, (text, _, meta) in enumerate(ranked, start=1):
+                key = meta.get("hash", text)   # chunk identity for dedupe
+                if key not in fused:
+                    fused[key] = [0.0, text, meta]
+                fused[key][0] += weight / (self.k + rank)
+        # best case: rank 1 in both lists -> 1/(k+1); normalise to [0, 1]
+        norm = self.k + 1
+        out = sorted(((s * norm, t, m) for s, t, m in fused.values()),
+                     key=lambda x: -x[0])[:top_k]
+        return [(t, float(s), m) for s, t, m in out]
+
+    def __len__(self):
+        return len(self._dense)
 
 
 if __name__ == "__main__":
@@ -135,7 +207,7 @@ if __name__ == "__main__":
             "maternity leave is 26 weeks in india",
             "standard shipping takes 3 to 5 business days"]
 
-    for name in ("dense", "bm25"):
+    for name in ("dense", "bm25", "hybrid"):
         r = build_retriever({"retriever": name, "embed_dim": 256})
         r.index(docs, [{"i": i} for i in range(3)])
         assert len(r) == 3 and len(r.metas) == 3
@@ -145,6 +217,27 @@ if __name__ == "__main__":
               f"(top score {top[0][1]:.3f}, filters:",
               [m for _, _, m in r.search(r.embed("shipping"),
                                         top_k=5, filters={"i": 2})], ")")
+
+    # hybrid on a nonsense query: both sub-lists gate out before fusion,
+    # so nothing survives to be fused — the refusal path stays intact
+    r = build_retriever({"retriever": "hybrid"})
+    r.index(["refund policy thirty days", "the policy is the policy"],
+            [{"i": 0}, {"i": 1}])
+    assert r.search(r.embed("xylophone quantum"), top_k=3) == []
+    # and alpha really is a weight: alpha=1 must equal the dense ranking,
+    # alpha=0 must equal the bm25 ranking
+    docs2 = ["refund window thirty days india", "shipping takes five days",
+             "maternity leave twenty six weeks"]
+    for alpha, twin in ((1.0, "dense"), (0.0, "bm25")):
+        h = build_retriever({"retriever": "hybrid", "hybrid_alpha": alpha})
+        h.index(docs2, [{"i": i} for i in range(3)])
+        s = build_retriever({"retriever": twin, "embed_dim": 256})
+        s.index(docs2, [{"i": i} for i in range(3)])
+        q = "refund window"
+        hr = [t for t, _, _ in h.search(h.embed(q), top_k=1)]
+        sr = [t for t, _, _ in s.search(s.embed(q), top_k=1)]
+        assert hr == sr, f"alpha={alpha} hybrid rank-1 != {twin}: {hr} vs {sr}"
+    print("hybrid fusion OK (refusal empty, alpha endpoints match backends)")
 
     # a nonsense question must score near 0, so pipeline's min_score gate
     # still refuses it instead of answering off stopword matches
