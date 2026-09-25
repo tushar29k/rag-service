@@ -6,3 +6,15 @@
 {"question": "What discount do new customers get?", "filters": {"country": "IN"}, "must_contain": ["10 percent"], "expected_doc": "pricing-in"}
 {"question": "What is the return policy for clearance items?", "filters": {"country": "IN"}, "must_contain": ["final sale"], "expected_doc": "refund-in"}
 {"question": "Who is the CEO?", "filters": {"country": "IN"}, "must_contain": ["don't know"], "expected_doc": null}
+{"question": "How long does it take to process a refund?", "filters": {"country": "IN"}, "must_contain": ["5 to 7"], "expected_doc": "refund-in"}
+{"question": "How do I request a refund?", "filters": {"country": "IN"}, "must_contain": ["support@example.com"], "expected_doc": "refund-in"}
+{"question": "By when must paternity leave be used?", "filters": {"country": "IN"}, "must_contain": ["6 months"], "expected_doc": "leave-in"}
+{"question": "How much notice must employees give HR before parental leave?", "filters": {"country": "IN"}, "must_contain": ["8 weeks"], "expected_doc": "leave-in"}
+{"question": "What does the warranty not cover?", "filters": {"country": "IN"}, "must_contain": ["accidental damage"], "expected_doc": "warranty-in"}
+{"question": "What must I do to claim warranty service?", "filters": {"country": "IN"}, "must_contain": ["register your product"], "expected_doc": "warranty-in"}
+{"question": "How much does express shipping cost?", "filters": {"country": "US"}, "must_contain": ["$12.99"], "expected_doc": "shipping-us"}
+{"question": "How do I get free standard shipping?", "filters": {"country": "US"}, "must_contain": ["$50"], "expected_doc": "shipping-us"}
+{"question": "What discount do students get?", "filters": {"country": "IN"}, "must_contain": ["15 percent"], "expected_doc": "pricing-in"}
+{"question": "What discount code do new customers use?", "filters": {"country": "IN"}, "must_contain": ["WELCOME10"], "expected_doc": "pricing-in"}
+{"question": "Do Indian prices include tax?", "filters": {"country": "IN"}, "must_contain": ["GST"], "expected_doc": "pricing-in"}
+{"question": "What is the customer support phone number?", "filters": {"country": "IN"}, "must_contain": ["don't know"], "expected_doc": null}
