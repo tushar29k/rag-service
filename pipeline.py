@@ -9,6 +9,7 @@ import time
 import yaml
 
 from chunker import chunk_text
+from reranker import build_reranker
 from retriever import build_retriever
 
 
@@ -63,6 +64,10 @@ class RAGPipeline:
         # dense, bm25 or hybrid behind the same interface — the pipeline
         # stages below don't know or care which one is wired in
         self.retriever = build_retriever(self.cfg)
+        # rerank is off by default — only pay for the cross-encoder (or
+        # the fallback) when the config explicitly asks for it
+        self.reranker = (build_reranker(self.cfg)
+                         if self.cfg.get("rerank") else None)
         self.index_version = self.cfg.get("index_version", "v1")
 
     @staticmethod
@@ -113,7 +118,23 @@ Answer:"""
         # means "turn the question into what the retriever eats"
         q = self.retriever.embed(question)
         t.mark("embed")
-        retrieved = self.retriever.search(q, top_k=top_k, filters=filters)
+        if self.reranker:
+            # two-stage retrieval: a wide net from the first-stage
+            # retriever, then the reranker re-scores the candidates down
+            # to the final list. min_score is applied to the reranked
+            # scores below — the reranker's opinion is the better judge.
+            depth = int(self.cfg.get("rerank_depth", 20))
+            top_n = int(self.cfg.get("rerank_top_n", 5))
+            candidates = self.retriever.search(q, top_k=depth,
+                                              filters=filters)
+            t.mark("retrieve")
+            retrieved = self.reranker.rerank(question, candidates,
+                                             top_n=top_n)
+            t.mark("rerank")
+        else:
+            retrieved = self.retriever.search(q, top_k=top_k,
+                                              filters=filters)
+            t.mark("retrieve")
         # Brute-force search always returns *something*, even for nonsense
         # questions. This threshold turns low-score retrievals into
         # "nothing relevant" so the generator refuses instead of answering

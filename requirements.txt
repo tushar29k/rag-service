@@ -3,4 +3,4 @@ pyyaml
 fastapi
 uvicorn
 rank-bm25  # sparse retriever backend (retriever: bm25)
-# sentence-transformers  # production swap: real embeddings (embedder_backend: st)
+# sentence-transformers  # production swap: st embedder (embedder_backend: st) + cross-encoder reranker (rerank_backend: cross_encoder)

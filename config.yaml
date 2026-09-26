@@ -23,6 +23,24 @@ hybrid_alpha: 0.5
 # top_k cut — RRF needs depth to see where the backends agree/disagree
 hybrid_depth: 20
 
+# Reranking (second retrieval stage — OFF by default so the live demo's
+# behaviour doesn't change): when rerank: true, the pipeline pulls
+# rerank_depth candidates with the first-stage retriever, then re-scores
+# them with a cross-encoder down to rerank_top_n. Slower but more
+# precise — the cross-encoder reads the query and the chunk together, so
+# it catches word order and negation the first stage can't. The
+# reranker's scores are in [0, 1], so the min_score gate above applies
+# to them unchanged (junk queries still get refused).
+rerank: false
+rerank_depth: 20
+rerank_top_n: 5
+# rerank_backend: "cross_encoder" (default, bge-reranker-base via
+# sentence-transformers; degrades to "lexical" with a log line when the
+# package or the model can't load) or "lexical" (zero deps — a
+# query-token-overlap stand-in, see reranker.py's # SWAP note).
+rerank_backend: cross_encoder
+# lighter swap for CPU boxes: cross-encoder/ms-marco-MiniLM-L-6-v2
+rerank_model: BAAI/bge-reranker-base
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and
 # falls back to hashing with a log line if the package or model is
