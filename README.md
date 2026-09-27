@@ -79,6 +79,27 @@ uvicorn service:app --reload
 
 Then `POST /query` with `{"text": "What is the refund window?", "filters": {"country": "IN"}}` — you get the answer, citations with scores, latency, and the per-stage breakdown. `POST /index` adds documents, `GET /health` shows the index version and chunk count.
 
+### Use your own key
+
+The live demo above runs on the author's key. To point your own copy at a
+real model for the generation stage:
+
+1. **Get a free key.** Go to `aistudio.google.com/api-keys` and click
+   **Create API key** — pick "Create API key in new project" (no Cloud
+   project and no credit card needed). Alternative: an OpenRouter key
+   (`openrouter.ai`) used with a `:free` model slug.
+2. **Local run:** `export LLM_API_KEY=your-key-here` before starting the
+   server — or put it in a `.env` file you never commit.
+3. **Render deploy:** dashboard → your service → Environment → add
+   `LLM_API_KEY` → Save. Render redeploys automatically and the fresh
+   build reads the key at startup (the client is created once at import,
+   so a restart is required — there is no hot-swap).
+4. **Confirm it's live:** the stamp in the demo header turns green
+   (`● live LLM · gemini-3.8-flash`), or `GET /info` returns
+   `"real_llm": true`.
+5. **Keep the key safe:** keys live in environment variables or a secret
+   manager only — never in code, never in a commit.
+
 ## Project layout
 
 ```

@@ -31,6 +31,11 @@ header{display:flex;align-items:baseline;gap:.9rem;flex-wrap:wrap;margin-bottom:
 .lamp{width:11px;height:11px;border-radius:50%;background:var(--faint);align-self:center;
   box-shadow:inset 0 1px 2px rgba(0,0,0,.25);transition:all .4s}
 .lamp.ok{background:#4d7c0f;box-shadow:0 0 12px rgba(77,124,15,.8)} /* lit when /health answers */
+/* llm stamp: green ink when a real model answers, amber on the offline mock */
+.stamp{font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--line);border-radius:4px;padding:.25rem .7rem;align-self:center;background:var(--card)}
+.stamp.live{color:#4d7c0f;border-color:#4d7c0f}
+.stamp.mock{color:var(--amber);border-color:var(--amber)}
 h1{font-size:1.9rem;font-weight:700;letter-spacing:.5px}
 h1 .thin{font-weight:400;font-style:italic;color:var(--brass);font-size:1.25rem}
 .kicker{font-size:.72rem;letter-spacing:4px;text-transform:uppercase;color:var(--muted);margin-bottom:1.4rem}
@@ -115,7 +120,7 @@ footer{margin-top:3rem;text-align:center;color:var(--faint);font-size:.75rem;let
 </style>
 </head>
 <body>
-<header><span class="lamp" id="health"></span><h1>The Archive <span class="thin">— rag-service reading room</span></h1></header>
+<header><span class="lamp" id="health"></span><h1>The Archive <span class="thin">— rag-service reading room</span></h1><span class="stamp" id="llmbadge">…</span></header>
 <p class="kicker">retrieval · grounded answers · shelf mark rag-service</p>
 
 <div class="rule">❦</div>
@@ -154,6 +159,12 @@ fetch('/health').then(function(r){return r.json()}).then(function(h){
   document.getElementById('health').classList.add('ok');
   document.getElementById('health').title = h.chunks + ' passages on the shelves';
 }).catch(function(){});
+// llm stamp: green when a real model answers, amber on the offline mock
+fetch('/info').then(function(r){return r.json()}).then(function(i){
+  var el=document.getElementById('llmbadge');
+  if(i.real_llm){el.textContent='● live LLM · '+i.model;el.classList.add('live')}
+  else{el.textContent='● offline mock';el.classList.add('mock')}
+}).catch(function(){document.getElementById('llmbadge').textContent='● status unknown'});
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 

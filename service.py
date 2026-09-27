@@ -37,6 +37,15 @@ def health():
     return {"status": "ok", "index_version": rag.index_version,
             "chunks": len(rag.retriever)}
 
+
+@app.get("/info")
+def info():
+    # real_llm is True only when a key configured a live client at startup
+    client = rag.llm
+    return {"real_llm": client is not None,
+            "provider": client.provider if client else None,
+            "model": client.model if client else None}
+
 # -- demo ui -----------------------------------------------------------------
 # open / in a browser to click through the api instead of curling it.
 import os as _os
