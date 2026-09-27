@@ -5,10 +5,12 @@ actually ship to a latency dashboard — when answers get slow, this tells
 you which stage to blame first.
 """
 import hashlib
+import sys
 import time
 import yaml
 
 from chunker import chunk_text
+from llm_client import FreeLLMClient, FreeLLMError
 from reranker import build_reranker
 from retriever import build_retriever
 
@@ -36,6 +38,10 @@ def _mock_llm(question, context_chunks):
     # SWAP (production): call your LLM here —
     #   answer = openai.chat.completions.create(model=..., messages=[...])
     # The prompt format below already follows the grounded-generation pattern.
+    #
+    # UPDATE: the swap is now real — RAGPipeline wires FreeLLMClient
+    # (llm_client.py, Gemini / OpenRouter free tiers) when LLM_API_KEY is
+    # set; _mock_llm stays the offline fallback, unchanged.
     """
     if not context_chunks:
         return "I don't know — nothing in the knowledge base covers this."
@@ -69,6 +75,22 @@ class RAGPipeline:
         self.reranker = (build_reranker(self.cfg)
                          if self.cfg.get("rerank") else None)
         self.index_version = self.cfg.get("index_version", "v1")
+        # real model when a key is configured, None otherwise — the mock
+        # path in answer() stays byte-for-byte identical with no key
+        self.llm = FreeLLMClient.from_env()
+
+    def _generate(self, prompt, question, retrieved):
+        # the real-LLM path: grounded answer over the retrieved context.
+        # any failure falls back to the extractive mock with a visible note
+        if self.llm is None:
+            return _mock_llm(question, retrieved)
+        try:
+            return self.llm.generate(prompt, max_tokens=512, temperature=0.2)
+        except FreeLLMError as e:
+            print(f"rag: model call failed ({e}) — mock instead",
+                  file=sys.stderr)
+            return (_mock_llm(question, retrieved)
+                    + "\n\n[model unavailable — showing offline mock result]")
 
     @staticmethod
     def _hash(text):
@@ -145,7 +167,7 @@ Answer:"""
         t.mark("retrieve")
         prompt = self.build_prompt(question, retrieved)
         t.mark("prompt")
-        answer = _mock_llm(question, retrieved)
+        answer = self._generate(prompt, question, retrieved)
         t.mark("generate")
         return {"answer": answer,
                 "citations": [{"text": tx, "score": round(s, 3),

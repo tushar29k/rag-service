@@ -82,6 +82,7 @@ Then `POST /query` with `{"text": "What is the refund window?", "filters": {"cou
 ## Project layout
 
 ```
+llm_client.py     free-tier LLM client (gemini | openrouter), stdlib only
 cli.py              demo / interactive entry point
 service.py          FastAPI wrapper: /index, /query, /health
 pipeline.py         RAGPipeline — index + answer, every stage timed
@@ -109,7 +110,7 @@ Run the same golden set against the BM25 backend with `python3 evals/run_eval.py
 ## Honest notes
 
 - **The embedder is hashing TF-IDF, not a neural model.** It's a bag-of-words trick with md5 bucketing. Great for zero-dependency local runs, useless for semantic similarity ("refund" won't match "money back"). Swap point: `embedder.py`, marked with `# SWAP` — a sentence-transformers class with the same `fit`/`transform` shape drops straight in.
-- **The "LLM" is an extractive mock** (`_mock_llm` in `pipeline.py`). It quotes sentences with keyword overlap; it can't do negation or synthesis, and it says so in every answer. Swap point: marked with `# SWAP` — the prompt builder already follows the grounded-generation pattern, so wiring in a real chat-completions call is small.
+- **The "LLM" is an extractive mock** (`_mock_llm` in `pipeline.py`) unless you set `LLM_API_KEY`. It quotes sentences with keyword overlap; it can't do negation or synthesis, and it says so in every answer. With a key set, `RAGPipeline` calls a real model (Gemini via Google AI Studio's free tier, or OpenRouter with `LLM_PROVIDER=openrouter` and a `:free` model; `LLM_MODEL` overrides the default) over the retrieved context instead — retrieval, reranking, citations, and the response contract are untouched. If the API call fails, the mock answers and the response carries a `[model unavailable — showing offline mock result]` note. On the live Render demo, set the env vars in the Render dashboard.
 - **The store is brute-force numpy** — O(n·d) per query, fine to ~100K chunks. Swap point: `store.py`, same four methods (`upsert`/`search`/`save`/`load`) on Qdrant or pgvector.
 - **`min_score` (0.15) was tuned by hand** against the golden set, not derived from anything principled. Re-tune it when the corpus changes.
 
