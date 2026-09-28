@@ -44,7 +44,8 @@ def info():
     client = rag.llm
     return {"real_llm": client is not None,
             "provider": client.provider if client else None,
-            "model": client.model if client else None}
+            "model": client.model if client else None,
+            "last_error": rag.last_llm_error}
 
 # -- demo ui -----------------------------------------------------------------
 # open / in a browser to click through the api instead of curling it.

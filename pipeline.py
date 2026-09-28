@@ -82,6 +82,7 @@ class RAGPipeline:
         # real model when a key is configured, None otherwise — the mock
         # path in answer() stays byte-for-byte identical with no key
         self.llm = FreeLLMClient.from_env()
+        self.last_llm_error = None  # last api failure, if any — on /info
 
     def _generate(self, prompt, question, retrieved):
         # the real-LLM path: grounded answer over the retrieved context.
@@ -89,8 +90,11 @@ class RAGPipeline:
         if self.llm is None:
             return _mock_llm(question, retrieved)
         try:
-            return self.llm.generate(prompt, max_tokens=512, temperature=0.2)
+            out = self.llm.generate(prompt, max_tokens=512, temperature=0.2)
+            self.last_llm_error = None  # recovered
+            return out
         except FreeLLMError as e:
+            self.last_llm_error = str(e)  # key-free — safe for /info
             print(f"rag: model call failed ({e}) — mock instead",
                   file=sys.stderr)
             return (_mock_llm(question, retrieved)
