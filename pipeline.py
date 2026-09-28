@@ -13,6 +13,7 @@ from chunker import chunk_text
 from llm_client import FreeLLMClient, FreeLLMError
 from reranker import build_reranker
 from retriever import build_retriever
+from rewriter import build_rewriter, dedupe_results
 
 
 class Timer:
@@ -74,6 +75,9 @@ class RAGPipeline:
         # the fallback) when the config explicitly asks for it
         self.reranker = (build_reranker(self.cfg)
                          if self.cfg.get("rerank") else None)
+        # off unless config opts in — the default answer() path stays
+        # byte-for-byte identical with rewriting disabled
+        self.rewriter = build_rewriter(self.cfg)
         self.index_version = self.cfg.get("index_version", "v1")
         # real model when a key is configured, None otherwise — the mock
         # path in answer() stays byte-for-byte identical with no key
@@ -136,27 +140,33 @@ Answer:"""
     def answer(self, question, filters=None, top_k=None):
         top_k = top_k or self.cfg.get("top_k", 3)
         t = Timer()
+        # query rewriting: one query fans out to variants (mock LLM, off
+        # entirely unless config says rewrite: true). each variant retrieves
+        # independently, then the lists merge and dedupe — overlap across
+        # variants collapses into one ranked list, best score kept
+        variants = (self.rewriter.rewrite(question)
+                    if self.rewriter else [question])
+        t.mark("rewrite")
         # embed = vectorise for dense, tokenise for bm25 — the "embed" stage
-        # means "turn the question into what the retriever eats"
-        q = self.retriever.embed(question)
-        t.mark("embed")
+        # means "turn each variant into what the retriever eats"
+        per_variant = (int(self.cfg.get("rerank_depth", 20))
+                       if self.reranker else top_k)
+        hits = [self.retriever.search(self.retriever.embed(v),
+                                      top_k=per_variant, filters=filters)
+                for v in variants]
+        t.mark("retrieve")
         if self.reranker:
-            # two-stage retrieval: a wide net from the first-stage
-            # retriever, then the reranker re-scores the candidates down
-            # to the final list. min_score is applied to the reranked
-            # scores below — the reranker's opinion is the better judge.
-            depth = int(self.cfg.get("rerank_depth", 20))
+            # two-stage retrieval: a wide deduped net, then the reranker
+            # re-scores the candidates down to the final list. min_score is
+            # applied to the reranked scores below — the reranker's opinion
+            # is the better judge.
             top_n = int(self.cfg.get("rerank_top_n", 5))
-            candidates = self.retriever.search(q, top_k=depth,
-                                              filters=filters)
-            t.mark("retrieve")
+            candidates = dedupe_results(hits)[:per_variant]
             retrieved = self.reranker.rerank(question, candidates,
                                              top_n=top_n)
             t.mark("rerank")
         else:
-            retrieved = self.retriever.search(q, top_k=top_k,
-                                              filters=filters)
-            t.mark("retrieve")
+            retrieved = dedupe_results(hits)[:top_k]
         # Brute-force search always returns *something*, even for nonsense
         # questions. This threshold turns low-score retrievals into
         # "nothing relevant" so the generator refuses instead of answering

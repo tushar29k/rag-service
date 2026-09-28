@@ -41,6 +41,15 @@ rerank_top_n: 5
 rerank_backend: cross_encoder
 # lighter swap for CPU boxes: cross-encoder/ms-marco-MiniLM-L-6-v2
 rerank_model: BAAI/bge-reranker-base
+# Query rewriting (multi-query expansion — OFF by default so the live
+# demo's behaviour doesn't change): when rewrite: true, one query fans
+# out to rewrite_variants variants (mock LLM in rewriter.py, marked
+# # SWAP for the real call) and the per-variant retrieval lists merge
+# with dedupe before the min_score gate. Ambiguous queries that use the
+# "wrong" words now get extra chances to hit the right chunks.
+rewrite: false
+rewrite_variants: 3
+
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and
 # falls back to hashing with a log line if the package or model is
