@@ -144,6 +144,14 @@ Answer:"""
     def answer(self, question, filters=None, top_k=None):
         top_k = top_k or self.cfg.get("top_k", 3)
         t = Timer()
+        if len(self.retriever) == 0:
+            # asking before indexing anything used to 500 on the
+            # embedder's "call fit() first" assert — say so instead
+            return {"answer": "Nothing indexed yet — add documents on the "
+                             "index tab first, then ask.",
+                    "citations": [],
+                    "latency_ms": t.total(), "breakdown": t.marks,
+                    "index_version": self.index_version}
         # query rewriting: one query fans out to variants (mock LLM, off
         # entirely unless config says rewrite: true). each variant retrieves
         # independently, then the lists merge and dedupe — overlap across
