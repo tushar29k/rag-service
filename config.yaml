@@ -8,6 +8,12 @@ top_k: 3
 # Tuned on evals/golden.jsonl, not derived. Re-tune when the corpus changes.
 min_score: 0.15
 
+# Store backend: "numpy" (default, in-memory brute force, zero deps) or
+# "pgvector" (Postgres + pgvector — needs docker-compose.yml running and
+# PGVECTOR_DSN set; see store_pgvector.py for the setup). Both answer the
+# same upsert/search/save/load interface, so the pipeline doesn't care.
+store_backend: numpy
+
 # Retriever backend: "dense" (default, embeddings + cosine), "bm25"
 # (rank-bm25 sparse keyword retrieval), or "hybrid" (reciprocal rank
 # fusion of both — keyword-exact and fuzzy matches reinforce each other).

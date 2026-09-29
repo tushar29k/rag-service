@@ -20,6 +20,15 @@ squash keeps weak matches weak.
 from embedder import _tokenize, build_embedder
 from store import VectorStore
 
+
+def build_store(cfg, dim):
+    # the store backend swap lives here so DenseRetriever stays untouched —
+    # numpy for offline, pgvector when a real server is configured
+    if cfg.get("store_backend", "numpy") == "pgvector":
+        from store_pgvector import PgVectorStore
+        return PgVectorStore(dim=dim)
+    return VectorStore(dim=dim)
+
 try:
     from rank_bm25 import BM25Okapi
 except ImportError:  # pragma: no cover
@@ -33,7 +42,7 @@ class DenseRetriever:
         self.embedder = build_embedder(cfg)
         # store sized from the embedder, not from config — st's 384 dims and
         # hashing's embed_dim are different animals
-        self.store = VectorStore(dim=self.embedder.dim)
+        self.store = build_store(cfg, dim=self.embedder.dim)
         self._fitted = False
 
     @property

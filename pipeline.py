@@ -104,12 +104,24 @@ class RAGPipeline:
     def _hash(text):
         return hashlib.sha256(text.encode()).hexdigest()[:16]
 
+    def _bump_index_version(self):
+        # version = index build number: every index call bumps it, even when
+        # the docs were already indexed (dedupe keeps the chunks unchanged).
+        # /health reports it, so an answer's index_version tells you which
+        # build of the index produced it
+        cur = self.index_version
+        n = int(cur[1:]) if cur.startswith("v") and cur[1:].isdigit() else 0
+        self.index_version = f"v{n + 1}"
+
     def index_documents(self, docs):
         """Index a batch of {text, metadata} docs.
 
         Returns how many NEW chunks were added — re-indexing the same docs
-        is a no-op thanks to content hashing.
+        is a no-op thanks to content hashing. The index version still bumps:
+        it counts builds, not content changes.
         """
+        if docs:
+            self._bump_index_version()
         all_chunks, all_metas = [], []
         for doc in docs:
             for i, ch in enumerate(chunk_text(

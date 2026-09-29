@@ -1,12 +1,14 @@
 """HTTP service over RAGPipeline. Run: uvicorn service:app --reload
 
 Endpoints:
-  POST /index  {text, metadata}         -> chunk + embed + upsert
+  POST /index  {text, metadata} or [{text, metadata}, ...]  -> chunk + embed + upsert
   POST /query  {text, filters?, top_k?} -> grounded answer + citations + timings
   GET  /health                          -> index version + chunk count
 """
+from typing import Union
+
 try:
-    from fastapi import FastAPI
+    from fastapi import Body, FastAPI
     from fastapi.responses import StreamingResponse  # noqa (streaming exercise)
 except ImportError as e:
     raise SystemExit("pip install fastapi uvicorn  (then re-run)") from e
@@ -19,10 +21,15 @@ app = FastAPI(title="rag-service")
 
 
 @app.post("/index")
-def index(doc: dict):
-    n = rag.index_documents([{"text": doc["text"],
-                              "metadata": doc.get("metadata", {})}])
-    return {"chunks_indexed": n, "total_chunks": len(rag.retriever),
+def index(body: Union[dict, list] = Body(...)):
+    # accepts one doc or a batch — batches go through the same
+    # chunk/embed/upsert path, just more of them in one request
+    docs = body if isinstance(body, list) else [body]
+    n = rag.index_documents([{"text": d["text"],
+                              "metadata": d.get("metadata", {})}
+                             for d in docs])
+    return {"docs_received": len(docs), "chunks_indexed": n,
+            "total_chunks": len(rag.retriever),
             "index_version": rag.index_version}
 
 
