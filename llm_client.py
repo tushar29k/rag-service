@@ -1,20 +1,26 @@
 """Free-tier LLM client. stdlib only — no new deps, keeps Render light.
 
 Env:
-  LLM_PROVIDER  gemini (default) | openrouter
+  LLM_PROVIDER  gemini (default) | openrouter | openai
   LLM_MODEL     override the default model for the provider
-  LLM_API_KEY   the key. FreeLLMClient.from_env() returns None without it,
-                so callers keep their mock path with zero behavior change.
+  LLM_API_KEY   the key for gemini/openrouter. FreeLLMClient.from_env()
+                returns None without it, so callers keep their mock path
+                with zero behavior change.
+  OPENAI_API_KEY  key for the openai provider (LLM_API_KEY also works)
+  OPENAI_BASE_URL point the openai provider at an OpenAI-compatible
+                server (ollama, vLLM, ...) instead of api.openai.com
 
 Gemini = Google AI Studio free tier (no card needed), key rides in the
 query param — that's how their REST API takes it; it's never logged.
 OpenRouter = OpenAI-compatible /chat/completions with a :free model slug.
+OpenAI = the real /chat/completions API; same request shape as OpenRouter.
 
 Resilience: 20s timeout, one retry with backoff on 429/5xx, then
 FreeLLMError whose message never contains the key.
 """
 import json
 import os
+import sys
 import time
 import urllib.request
 import urllib.error
@@ -30,7 +36,26 @@ _BACKOFF = 1.5
 _DEFAULTS = {
     "gemini": "gemini-3.8-flash",
     "openrouter": "openai/gpt-oss-20b:free",
+    "openai": "gpt-4o-mini",
 }
+
+
+def _base_url(provider):
+    # openai-compatible servers (ollama, vLLM, proxies) can stand in
+    # for the real API by setting OPENAI_BASE_URL — same request shape
+    if provider == "openrouter":
+        return "https://openrouter.ai/api/v1"
+    return os.environ.get("OPENAI_BASE_URL",
+                          "https://api.openai.com/v1")
+
+
+def _key_for(provider):
+    # OPENAI_API_KEY is the conventional name; the shared LLM_API_KEY
+    # still works so one secret serves every provider
+    if provider == "openai":
+        return (os.environ.get("OPENAI_API_KEY")
+                or os.environ.get("LLM_API_KEY"))
+    return os.environ.get("LLM_API_KEY")
 
 
 class FreeLLMClient:
@@ -42,9 +67,35 @@ class FreeLLMClient:
                                f"— want one of {sorted(_DEFAULTS)}")
         self.model = model or os.environ.get("LLM_MODEL") or \
             _DEFAULTS[self.provider]
-        self.api_key = api_key or os.environ.get("LLM_API_KEY")
+        self.api_key = api_key or _key_for(self.provider)
         if not self.api_key:
-            raise FreeLLMError("no LLM_API_KEY in the environment")
+            raise FreeLLMError("no API key in the environment")
+
+    @classmethod
+    def for_generator(cls, generator):
+        """Map the config.yaml `generator:` value to a client or None.
+
+        mock  -> None always: the extractive stand-in answers everything
+        openai -> an openai provider client when a key is configured, else
+                  None (caller falls back to mock — no key, no crash)
+        auto  -> the pre-generator behavior: whatever LLM_PROVIDER + a key
+                  configure, else None
+        A typo'd value fails loud at startup instead of silently mocking.
+        """
+        generator = (generator or "auto").lower()
+        if generator == "mock":
+            return None
+        if generator == "auto":
+            return cls.from_env()
+        if generator not in _DEFAULTS:
+            raise FreeLLMError(
+                f"unknown generator '{generator}' — want one of "
+                f"mock, auto, {sorted(_DEFAULTS)}")
+        if not _key_for(generator):
+            print(f"rag: no key for generator '{generator}' — mock instead",
+                  file=sys.stderr)
+            return None
+        return cls(provider=generator)
 
     @classmethod
     def from_env(cls):
@@ -71,8 +122,10 @@ class FreeLLMClient:
             data = json.dumps(body).encode()
             return urllib.request.Request(
                 url, data=data, headers={"Content-Type": "application/json"})
-        # openrouter — openai-compatible chat completions
-        url = "https://openrouter.ai/api/v1/chat/completions"
+        # openrouter + openai: same openai-compatible chat completions
+        # shape, different base URL — the key rides in the Authorization
+        # header for both, never in the URL
+        url = _base_url(self.provider) + "/chat/completions"
         body = {"model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": max_tokens, "temperature": temperature}

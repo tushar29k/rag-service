@@ -56,6 +56,15 @@ rerank_model: BAAI/bge-reranker-base
 rewrite: false
 rewrite_variants: 3
 
+# Generator backend: "auto" (default, real model when LLM_API_KEY is
+# configured — the 2026-09-27 behavior — else the extractive mock),
+# "mock" (always the offline extractive stand-in, key ignored), or
+# "openai" (OpenAI-compatible /chat/completions: key from OPENAI_API_KEY
+# or LLM_API_KEY, default model gpt-4o-mini, OPENAI_BASE_URL + LLM_MODEL
+# overrides). With generator: openai and no key, the pipeline logs one
+# line and falls back to the mock — nothing crashes.
+generator: auto
+
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and
 # falls back to hashing with a log line if the package or model is

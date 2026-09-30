@@ -50,6 +50,7 @@ def info():
     # real_llm is True only when a key configured a live client at startup
     client = rag.llm
     return {"real_llm": client is not None,
+            "generator": rag.cfg.get("generator", "auto"),
             "provider": client.provider if client else None,
             "model": client.model if client else None,
             "last_error": rag.last_llm_error}

@@ -79,9 +79,12 @@ class RAGPipeline:
         # byte-for-byte identical with rewriting disabled
         self.rewriter = build_rewriter(self.cfg)
         self.index_version = self.cfg.get("index_version", "v1")
-        # real model when a key is configured, None otherwise — the mock
-        # path in answer() stays byte-for-byte identical with no key
-        self.llm = FreeLLMClient.from_env()
+        # generator picks the answer backend (config.yaml): mock keeps the
+        # extractive stand-in, openai needs a key and falls back to mock
+        # cleanly without one, auto preserves the old key->real-model
+        # behavior. self.llm is None on the mock path, always
+        self.llm = FreeLLMClient.for_generator(self.cfg.get("generator",
+                                                            "auto"))
         self.last_llm_error = None  # last api failure, if any — on /info
 
     def _generate(self, prompt, question, retrieved):
@@ -145,7 +148,9 @@ class RAGPipeline:
         context = "\n\n".join(
             f"[{i+1}] {text}" for i, (text, _, _) in enumerate(retrieved))
         return f"""Answer the question using ONLY the context below. If the
-context doesn't contain the answer, say you don't know. Cite sources like [1].
+context doesn't contain the answer, say you don't know. Every factual
+claim in your answer must cite the chunk it comes from, like [1] or [2].
+No citation = no claim — never guess or fill in gaps from memory.
 
 Context:
 {context}
