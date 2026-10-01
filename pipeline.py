@@ -103,6 +103,33 @@ class RAGPipeline:
             return (_mock_llm(question, retrieved)
                     + "\n\n[model unavailable — showing offline mock result]")
 
+    def _generate_stream(self, prompt, question, retrieved):
+        # same backends as _generate, but token-by-token. the mock has no
+        # real tokens, so it fakes the cadence: a few words at a time with
+        # a tiny pause, so curl/UIs see incremental arrival the same way
+        # a live stream looks
+        if self.llm is None:
+            words = _mock_llm(question, retrieved).split()
+            for i in range(0, len(words), 3):
+                yield " ".join(words[i:i + 3]) + " "
+                time.sleep(0.02)
+            return
+        try:
+            for chunk in self.llm.generate_stream(prompt, max_tokens=512,
+                                                  temperature=0.2):
+                yield chunk
+            self.last_llm_error = None  # recovered
+        except FreeLLMError as e:
+            self.last_llm_error = str(e)  # key-free — safe for /info
+            print(f"rag: model call failed ({e}) — mock instead",
+                  file=sys.stderr)
+            words = (_mock_llm(question, retrieved)
+                     + "\n\n[model unavailable — showing offline mock "
+                       "result]").split()
+            for i in range(0, len(words), 3):
+                yield " ".join(words[i:i + 3]) + " "
+                time.sleep(0.02)
+
     @staticmethod
     def _hash(text):
         return hashlib.sha256(text.encode()).hexdigest()[:16]
@@ -213,3 +240,57 @@ Answer:"""
                                "meta": m} for tx, s, m in retrieved],
                 "latency_ms": t.total(), "breakdown": t.marks,
                 "index_version": self.index_version}
+
+    def answer_stream(self, question, filters=None, top_k=None):
+        """Like answer(), but a generator of SSE-ready event dicts.
+
+        Event shape: {"type": "meta"|"token"|"done", ...}. The meta event
+        carries citations + index_version up front (so a UI can show
+        sources immediately), token events carry incremental answer text,
+        and done carries the latency breakdown. The retrieval stages are
+        the same code path as answer() — one pipeline, two mouths.
+        """
+        top_k = top_k or self.cfg.get("top_k", 3)
+        t = Timer()
+        if len(self.retriever) == 0:
+            # same empty-index kindness as answer(), just in stream form
+            yield {"type": "meta", "index_version": self.index_version,
+                   "citations": []}
+            yield {"type": "token", "text": "Nothing indexed yet — add "
+                                            "documents on the index tab "
+                                            "first, then ask."}
+            yield {"type": "done", "latency_ms": t.total(),
+                   "breakdown": t.marks}
+            return
+        variants = (self.rewriter.rewrite(question)
+                    if self.rewriter else [question])
+        t.mark("rewrite")
+        per_variant = (int(self.cfg.get("rerank_depth", 20))
+                       if self.reranker else top_k)
+        hits = [self.retriever.search(self.retriever.embed(v),
+                                      top_k=per_variant, filters=filters)
+                for v in variants]
+        t.mark("retrieve")
+        if self.reranker:
+            top_n = int(self.cfg.get("rerank_top_n", 5))
+            candidates = dedupe_results(hits)[:per_variant]
+            retrieved = self.reranker.rerank(question, candidates,
+                                             top_n=top_n)
+            t.mark("rerank")
+        else:
+            retrieved = dedupe_results(hits)[:top_k]
+        min_score = self.cfg.get("min_score", 0.15)
+        retrieved = [(tx, s, m) for tx, s, m in retrieved if s >= min_score]
+        t.mark("retrieve")
+        prompt = self.build_prompt(question, retrieved)
+        t.mark("prompt")
+        yield {"type": "meta", "index_version": self.index_version,
+               "citations": [{"text": tx, "score": round(s, 3), "meta": m}
+                             for tx, s, m in retrieved]}
+        # flush each token as it arrives so the UI renders progressively
+        # instead of staring at a spinner
+        for tok in self._generate_stream(prompt, question, retrieved):
+            yield {"type": "token", "text": tok}
+        t.mark("generate")
+        yield {"type": "done", "latency_ms": t.total(),
+               "breakdown": t.marks}

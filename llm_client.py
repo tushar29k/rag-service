@@ -112,23 +112,81 @@ class FreeLLMClient:
         req = self._request(prompt, max_tokens, temperature)
         return self._send(req)
 
-    def _request(self, prompt, max_tokens, temperature):
+    def generate_stream(self, prompt, max_tokens=512, temperature=0.2):
+        """Yield answer text chunks as they arrive from the provider.
+
+        The real-LLM path uses the provider's streaming HTTP endpoint
+        (gemini streamGenerateContent, or "stream": true for the
+        openai-compatible chat completions shape) and parses the SSE
+        frames with one line-based parser — both shapes boil down to
+        `data: {json}\n` lines ending in `data: [DONE]`.
+        """
+        req = self._request(prompt, max_tokens, temperature,
+                            stream=True)
+        try:
+            resp = urllib.request.urlopen(req, timeout=_TIMEOUT)
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            raise FreeLLMError(
+                f"{self.provider} unreachable ({type(e).__name__})") from None
+        buf = ""
+        try:
+            while True:
+                chunk = resp.read(1024)
+                if not chunk:
+                    break
+                buf += chunk.decode("utf-8", errors="replace")
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    text = self._sse_text(line)
+                    if text:
+                        yield text
+        except urllib.error.HTTPError as e:
+            raise FreeLLMError(
+                f"{self.provider} rejected the request "
+                f"(HTTP {e.code})") from None
+
+    def _sse_text(self, line):
+        # one line from a streaming response: blank, a [DONE] sentinel,
+        # or data: {json} — try the gemini shape, then the delta shape
+        line = line.strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
+        if not line or line == "[DONE]":
+            return None
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        try:
+            return payload["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            pass
+        try:
+            return payload["choices"][0]["delta"].get("content") or None
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    def _request(self, prompt, max_tokens, temperature, stream=False):
         if self.provider == "gemini":
+            action = "streamGenerateContent" if stream \
+                else "generateContent"
             url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   f"{self.model}:generateContent?key={self.api_key}")
+                   f"{self.model}:{action}?key={self.api_key}")
             body = {"contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": max_tokens,
                                         "temperature": temperature}}
             data = json.dumps(body).encode()
             return urllib.request.Request(
-                url, data=data, headers={"Content-Type": "application/json"})
+                url, data=data, headers={"Content-Type": "application/json",
+                                         "Accept": "text/event-stream"})
         # openrouter + openai: same openai-compatible chat completions
         # shape, different base URL — the key rides in the Authorization
         # header for both, never in the URL
         url = _base_url(self.provider) + "/chat/completions"
         body = {"model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens, "temperature": temperature}
+                "max_tokens": max_tokens, "temperature": temperature,
+                "stream": stream}
         return urllib.request.Request(
             url, data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json",

@@ -134,6 +134,7 @@ footer{margin-top:3rem;text-align:center;color:var(--faint);font-size:.75rem;let
   <textarea id="q" placeholder="Pose your question to the archive…"></textarea>
   <div class="row">
     <label>passages retrieved <input type="number" id="topk" value="3" min="1" max="10"></label>
+    <label><input type="checkbox" id="streamcb" checked> stream as it's written</label>
     <button class="go" id="askbtn" onclick="ask()">Consult the archive</button>
   </div>
   <div id="out"></div>
@@ -170,6 +171,57 @@ fetch('/info').then(function(r){return r.json()}).then(function(i){
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 
 function ask(){
+  if(document.getElementById('streamcb').checked){askStream()}else{askSync()}
+}
+
+// streamed path: reads the /query-stream SSE frames and appends tokens
+// to the answer card as they arrive, so it reads like the archive is
+// writing live. same markup as the sync path, just filled incrementally.
+function askStream(){
+  var btn=document.getElementById('askbtn'); btn.disabled=true; btn.textContent='Consulting…';
+  var out=document.getElementById('out'); out.innerHTML='';
+  var card=document.createElement('div'); card.className='card';
+  card.innerHTML='<div class="answer"></div><div class="meta"></div><div class="cites"></div>';
+  out.appendChild(card);
+  var ansEl=card.querySelector('.answer'), buf='', metaPayload=null;
+  function cites(d){
+    var html='';
+    (metaPayload.citations||[]).forEach(function(c,i){
+      html+='<div class="cite"><span class="catno">catalogue card '+(i+1)+'</span><span class="score">score '+c.score+'</span><br>'+esc(c.text)+'</div>';
+    });
+    card.querySelector('.cites').innerHTML=html;
+    card.querySelector('.meta').innerHTML='retrieved in <b>'+d.latency_ms+' ms</b> · catalogue v'+metaPayload.index_version;
+  }
+  fetch('/query-stream',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:document.getElementById('q').value,top_k:parseInt(document.getElementById('topk').value)||3})})
+  .then(function(r){
+    var reader=r.body.getReader(), dec=new TextDecoder(), tail='';
+    function pump(){
+      return reader.read().then(function(res){
+        if(res.done){return}
+        tail+=dec.decode(res.value,{stream:true});
+        var frames=tail.split('\n\n'); tail=frames.pop();
+        frames.forEach(function(frame){
+          var ev=null, data='';
+          frame.split('\n').forEach(function(line){
+            if(line.indexOf('event:')===0){ev=line.slice(6).trim()}
+            else if(line.indexOf('data:')===0){data=line.slice(5).trim()}
+          });
+          if(!ev||!data){return}
+          var d=JSON.parse(data);
+          if(ev==='token'){buf+=d.text; ansEl.textContent=buf}
+          else if(ev==='meta'){metaPayload=d}
+          else if(ev==='done'&&metaPayload){cites(d)}
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }).catch(function(e){out.innerHTML='<p class="err">The archive is closed for repairs: '+esc(e.message)+'</p>'})
+  .finally(function(){btn.disabled=false;btn.textContent='Consult the archive'});
+}
+
+function askSync(){
   var btn=document.getElementById('askbtn'); btn.disabled=true; btn.textContent='Consulting…';
   var out=document.getElementById('out'); out.innerHTML='';
   fetch('/query',{method:'POST',headers:{'content-type':'application/json'},

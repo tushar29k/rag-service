@@ -1,15 +1,17 @@
 """HTTP service over RAGPipeline. Run: uvicorn service:app --reload
 
 Endpoints:
-  POST /index  {text, metadata} or [{text, metadata}, ...]  -> chunk + embed + upsert
-  POST /query  {text, filters?, top_k?} -> grounded answer + citations + timings
+  POST /index        {text, metadata} or [{text, metadata}, ...]  -> chunk + embed + upsert
+  POST /query        {text, filters?, top_k?} -> grounded answer + citations + timings
+  POST /query-stream {text, filters?, top_k?} -> SSE: meta, then tokens, then done
   GET  /health                          -> index version + chunk count
 """
+import json
 from typing import Union
 
 try:
     from fastapi import Body, FastAPI
-    from fastapi.responses import StreamingResponse  # noqa (streaming exercise)
+    from fastapi.responses import StreamingResponse
 except ImportError as e:
     raise SystemExit("pip install fastapi uvicorn  (then re-run)") from e
 
@@ -37,6 +39,17 @@ def index(body: Union[dict, list] = Body(...)):
 def query(q: dict):
     return rag.answer(q["text"], filters=q.get("filters"),
                       top_k=q.get("top_k"))
+
+
+@app.post("/query-stream")
+def query_stream(q: dict):
+    # server-sent events: meta first (citations + version), then one
+    # event per answer token as the generate stage emits them, then done
+    def sse():
+        for ev in rag.answer_stream(q["text"], filters=q.get("filters"),
+                                    top_k=q.get("top_k")):
+            yield f"event: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
+    return StreamingResponse(sse(), media_type="text/event-stream")
 
 
 @app.get("/health")
