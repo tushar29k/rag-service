@@ -170,8 +170,12 @@ class FreeLLMClient:
         if self.provider == "gemini":
             action = "streamGenerateContent" if stream \
                 else "generateContent"
+            # alt=sse is what makes gemini actually speak SSE — without it
+            # the endpoint returns a JSON array and the frame parser below
+            # sees zero data: lines
+            alt = "alt=sse&" if stream else ""
             url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   f"{self.model}:{action}?key={self.api_key}")
+                   f"{self.model}:{action}?{alt}key={self.api_key}")
             body = {"contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": max_tokens,
                                         "temperature": temperature}}
