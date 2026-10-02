@@ -2,9 +2,14 @@
 
 Every stage is timed, and the `breakdown` in each result is the bit I'd
 actually ship to a latency dashboard — when answers get slow, this tells
-you which stage to blame first.
+you which stage to blame first. The same timings are appended to
+logs/latency.jsonl (one JSON line per query; evals/latency_summary.py
+turns that into a p50/p99 table) whenever `latency_log` is set in
+config.yaml — off entirely when it's null.
 """
 import hashlib
+import json
+import os
 import sys
 import time
 import yaml
@@ -86,6 +91,25 @@ class RAGPipeline:
         self.llm = FreeLLMClient.for_generator(self.cfg.get("generator",
                                                             "auto"))
         self.last_llm_error = None  # last api failure, if any — on /info
+        # where per-query stage timings go; null = don't log at all.
+        # logs/ is gitignored — timing data is local, not repo content
+        self.latency_log = self.cfg.get("latency_log", "logs/latency.jsonl")
+
+    def _record_latency(self, question, t, top_k):
+        # one JSON line per query: question + stage timings. the summary
+        # script aggregates these, so keep the write cheap and append-only
+        if not self.latency_log:
+            return
+        os.makedirs(os.path.dirname(self.latency_log) or ".", exist_ok=True)
+        row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+               "question": question,
+               "backend": self.cfg.get("retriever", "dense"),
+               "top_k": top_k,
+               "total_ms": t.total(),
+               "stages_ms": dict(t.marks),
+               "index_version": self.index_version}
+        with open(self.latency_log, "a") as f:
+            f.write(json.dumps(row) + "\n")
 
     def _generate(self, prompt, question, retrieved):
         # the real-LLM path: grounded answer over the retrieved context.
@@ -230,11 +254,12 @@ Answer:"""
         # it if the corpus changes.
         min_score = self.cfg.get("min_score", 0.15)
         retrieved = [(tx, s, m) for tx, s, m in retrieved if s >= min_score]
-        t.mark("retrieve")
+        t.mark("filter")
         prompt = self.build_prompt(question, retrieved)
         t.mark("prompt")
         answer = self._generate(prompt, question, retrieved)
         t.mark("generate")
+        self._record_latency(question, t, top_k)
         return {"answer": answer,
                 "citations": [{"text": tx, "score": round(s, 3),
                                "meta": m} for tx, s, m in retrieved],
@@ -281,7 +306,7 @@ Answer:"""
             retrieved = dedupe_results(hits)[:top_k]
         min_score = self.cfg.get("min_score", 0.15)
         retrieved = [(tx, s, m) for tx, s, m in retrieved if s >= min_score]
-        t.mark("retrieve")
+        t.mark("filter")
         prompt = self.build_prompt(question, retrieved)
         t.mark("prompt")
         yield {"type": "meta", "index_version": self.index_version,
@@ -292,5 +317,6 @@ Answer:"""
         for tok in self._generate_stream(prompt, question, retrieved):
             yield {"type": "token", "text": tok}
         t.mark("generate")
+        self._record_latency(question, t, top_k)
         yield {"type": "done", "latency_ms": t.total(),
                "breakdown": t.marks}

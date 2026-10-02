@@ -65,6 +65,13 @@ rewrite_variants: 3
 # line and falls back to the mock — nothing crashes.
 generator: auto
 
+# Latency logging: each pipeline.answer()/answer_stream() appends one JSON
+# line per query (stage timings + question + backend) to this file —
+# evals/latency_summary.py turns it into a p50/p99 table. null disables
+# logging entirely. logs/ is gitignored: timing data is local noise, not
+# repo content.
+latency_log: logs/latency.jsonl
+
 # Embedder backend: "hashing" (default, zero deps) or "st"
 # (sentence-transformers, real neural embeddings). st is lazy-imported and
 # falls back to hashing with a log line if the package or model is
