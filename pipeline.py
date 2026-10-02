@@ -100,6 +100,7 @@ class RAGPipeline:
         # script aggregates these, so keep the write cheap and append-only
         if not self.latency_log:
             return
+        # custom log paths may not exist yet — create on first write
         os.makedirs(os.path.dirname(self.latency_log) or ".", exist_ok=True)
         row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                "question": question,
