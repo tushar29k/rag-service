@@ -227,7 +227,8 @@ function askSync(){
   fetch('/query',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:document.getElementById('q').value,top_k:parseInt(document.getElementById('topk').value)||3})})
   .then(function(r){return r.json()}).then(function(d){
-    var html='<div class="card"><div class="answer">'+esc(d.answer)+'</div><div class="meta">retrieved in <b>'+d.latency_ms+' ms</b> · catalogue v'+d.index_version+'</div>';
+    var cachedTag=d.cached?' <b>· ⚡ answered from cache</b>':'';
+    var html='<div class="card"><div class="answer">'+esc(d.answer)+'</div><div class="meta">retrieved in <b>'+d.latency_ms+' ms</b> · catalogue v'+d.index_version+cachedTag+'</div>';
     (d.citations||[]).forEach(function(c,i){
       html+='<div class="cite"><span class="catno">catalogue card '+(i+1)+'</span><span class="score">score '+c.score+'</span><br>'+esc(c.text)+'</div>';
     });

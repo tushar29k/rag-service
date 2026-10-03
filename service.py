@@ -54,8 +54,11 @@ def query_stream(q: dict):
 
 @app.get("/health")
 def health():
+    cache = (rag.cache.stats() if rag.cache else
+             {"enabled": False, "hits": 0, "misses": 0, "hit_rate": 0.0,
+              "size": 0})
     return {"status": "ok", "index_version": rag.index_version,
-            "chunks": len(rag.retriever)}
+            "chunks": len(rag.retriever), "cache": cache}
 
 
 @app.get("/info")

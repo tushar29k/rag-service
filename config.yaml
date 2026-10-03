@@ -65,6 +65,17 @@ rewrite_variants: 3
 # line and falls back to the mock — nothing crashes.
 generator: auto
 
+# Semantic query cache (exact + near-duplicate): when enabled, /query
+# first checks an exact-match cache (sha of the normalized question),
+# then an embedding-similarity cache (cosine over hashing bag-of-words
+# vectors — # SWAP a real embedder in cache.py for production). Hits
+# skip the pipeline and return the stored answer with "cached": true;
+# re-indexing clears the cache. /health reports hits/misses/hit_rate.
+semantic_cache:
+  enabled: true
+  threshold: 0.85
+  max_entries: 256
+
 # Latency logging: each pipeline.answer()/answer_stream() appends one JSON
 # line per query (stage timings + question + backend) to this file —
 # evals/latency_summary.py turns it into a p50/p99 table. null disables

@@ -15,6 +15,7 @@ import time
 import yaml
 
 from chunker import chunk_text
+from cache import SemanticCache
 from llm_client import FreeLLMClient, FreeLLMError
 from reranker import build_reranker
 from retriever import build_retriever
@@ -94,6 +95,15 @@ class RAGPipeline:
         # where per-query stage timings go; null = don't log at all.
         # logs/ is gitignored — timing data is local, not repo content
         self.latency_log = self.cfg.get("latency_log", "logs/latency.jsonl")
+        # semantic cache: repeats + paraphrases skip the pipeline entirely.
+        # off when semantic_cache is absent/disabled — the answer() path
+        # stays byte-for-byte identical without it
+        sc = self.cfg.get("semantic_cache")
+        sc = sc if isinstance(sc, dict) else {"enabled": bool(sc)}
+        self.cache = (SemanticCache(
+            threshold=sc.get("threshold", 0.85),
+            max_entries=sc.get("max_entries", 256))
+            if sc.get("enabled") else None)
 
     def _record_latency(self, question, t, top_k):
         # one JSON line per query: question + stage timings. the summary
@@ -177,6 +187,8 @@ class RAGPipeline:
         """
         if docs:
             self._bump_index_version()
+            if self.cache:
+                self.cache.clear()
         all_chunks, all_metas = [], []
         for doc in docs:
             for i, ch in enumerate(chunk_text(
@@ -220,7 +232,18 @@ Answer:"""
                              "index tab first, then ask.",
                     "citations": [],
                     "latency_ms": t.total(), "breakdown": t.marks,
-                    "index_version": self.index_version}
+                    "index_version": self.index_version,
+                    "cached": False}
+        # cache check goes after the empty-index guard — "nothing
+        # indexed" answers aren't grounded on anything, not cacheable
+        if self.cache:
+            hit = self.cache.lookup(question)
+            if hit is not None:
+                # same answer, zero retrieval. "cached" is the tell —
+                # latency_ms is the original run's, kept honest
+                out = dict(hit)
+                out["cached"] = True
+                return out
         # query rewriting: one query fans out to variants (mock LLM, off
         # entirely unless config says rewrite: true). each variant retrieves
         # independently, then the lists merge and dedupe — overlap across
@@ -261,11 +284,14 @@ Answer:"""
         answer = self._generate(prompt, question, retrieved)
         t.mark("generate")
         self._record_latency(question, t, top_k)
-        return {"answer": answer,
-                "citations": [{"text": tx, "score": round(s, 3),
-                               "meta": m} for tx, s, m in retrieved],
-                "latency_ms": t.total(), "breakdown": t.marks,
-                "index_version": self.index_version}
+        result = {"answer": answer,
+                  "citations": [{"text": tx, "score": round(s, 3),
+                                 "meta": m} for tx, s, m in retrieved],
+                  "latency_ms": t.total(), "breakdown": t.marks,
+                  "index_version": self.index_version, "cached": False}
+        if self.cache:
+            self.cache.store(question, result)
+        return result
 
     def answer_stream(self, question, filters=None, top_k=None):
         """Like answer(), but a generator of SSE-ready event dicts.
