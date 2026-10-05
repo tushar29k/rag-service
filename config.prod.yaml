@@ -1,0 +1,16 @@
+# Production overlay — loaded on top of config.yaml when the
+# RAG_PROFILE=prod env var is set. Only the keys below change;
+# everything else inherits config.yaml untouched.
+#
+# Usage:  RAG_PROFILE=prod uvicorn service:app
+# In Render: set RAG_PROFILE=prod in the service's environment vars.
+top_k: 5
+min_score: 0.2
+hybrid_depth: 40
+
+# bigger cache for production traffic, same similarity threshold
+semantic_cache:
+  max_entries: 1024
+
+# keep prod timings out of the dev latency log
+latency_log: logs/prod-latency.jsonl

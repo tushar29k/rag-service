@@ -67,6 +67,7 @@ def info():
     client = rag.llm
     return {"real_llm": client is not None,
             "generator": rag.cfg.get("generator", "auto"),
+            "profile": rag.profile,  # None unless RAG_PROFILE set
             "provider": client.provider if client else None,
             "model": client.model if client else None,
             "last_error": rag.last_llm_error}

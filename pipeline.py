@@ -22,6 +22,39 @@ from retriever import build_retriever
 from rewriter import build_rewriter, dedupe_results
 
 
+def _deep_merge(base, overlay):
+    # config profiles: nested dicts merge key by key, everything else
+    # (scalars, lists, nulls) is a plain replacement
+    merged = dict(base)
+    for k, v in overlay.items():
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = _deep_merge(merged[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+
+def load_config(config_path="config.yaml", env_var="RAG_PROFILE"):
+    # base config first, then an overlay like config.prod.yaml when the
+    # env var names a profile — prod runs `RAG_PROFILE=prod uvicorn
+    # service:app`. no env var = exact old behavior.
+    cfg = yaml.safe_load(open(config_path)) or {}
+    profile = os.environ.get(env_var)
+    if profile:
+        here = os.path.dirname(os.path.abspath(config_path)) or "."
+        overlay_path = os.path.join(here, "config.%s.yaml" % profile)
+        if not os.path.exists(overlay_path):
+            # fail loud at startup — a typo'd profile name should never
+            # silently run with dev defaults in prod
+            raise FileNotFoundError(
+                "%s=%r: no overlay file at %s" % (env_var, profile,
+                                                  overlay_path))
+        overlay = yaml.safe_load(open(overlay_path)) or {}
+        cfg = _deep_merge(cfg, overlay)
+        cfg["_profile"] = profile  # loader-injected, not a real setting
+    return cfg
+
+
 class Timer:
     def __init__(self):
         self.marks, self._t = {}, time.perf_counter()
@@ -69,7 +102,8 @@ def _mock_llm(question, context_chunks):
 
 class RAGPipeline:
     def __init__(self, config_path="config.yaml", overrides=None):
-        self.cfg = yaml.safe_load(open(config_path))
+        self.cfg = load_config(config_path)
+        self.profile = self.cfg.get("_profile")  # None unless RAG_PROFILE set
         if overrides:
             # lets evals/cli run one backend without editing config.yaml
             self.cfg.update({k: v for k, v in overrides.items()

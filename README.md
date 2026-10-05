@@ -134,6 +134,7 @@ Run the same golden set against the BM25 backend with `python3 evals/run_eval.py
 - **The "LLM" is an extractive mock** (`_mock_llm` in `pipeline.py`) unless you set `LLM_API_KEY`. It quotes sentences with keyword overlap; it can't do negation or synthesis, and it says so in every answer. With a key set, `RAGPipeline` calls a real model (Gemini via Google AI Studio's free tier, or OpenRouter with `LLM_PROVIDER=openrouter` and a `:free` model; `LLM_MODEL` overrides the default) over the retrieved context instead — retrieval, reranking, citations, and the response contract are untouched. If the API call fails, the mock answers and the response carries a `[model unavailable — showing offline mock result]` note. On the live Render demo, set the env vars in the Render dashboard.
 - **The store is brute-force numpy** — O(n·d) per query, fine to ~100K chunks. Swap point: `store.py`, same four methods (`upsert`/`search`/`save`/`load`) on Qdrant or pgvector.
 - **`min_score` (0.15) was tuned by hand** against the golden set, not derived from anything principled. Re-tune it when the corpus changes.
+- **Config profiles:** `config.yaml` is the dev default. Setting `RAG_PROFILE=prod` layers `config.prod.yaml` on top of it at startup (nested dicts merge key by key, scalars and lists are replaced — see `load_config` in `pipeline.py`). A missing overlay file fails loudly instead of silently running dev defaults. The active profile is reported by `GET /info`. Make your own with `config.<name>.yaml` — it must live next to `config.yaml`.
 
 ## Things worth trying
 
