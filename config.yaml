@@ -1,6 +1,11 @@
 index_version: v1
 chunk_size: 120
 overlap: 20
+# Chunker backend: "word" (default, overlapping word-windows — crude but
+# deterministic) or "recursive" (sentence-aware: packs whole sentences up
+# to chunk_size, boundaries only land between sentences). Same chunk_size
+# and overlap knobs apply to both.
+chunker: word
 embed_dim: 2048
 top_k: 3
 # Relevance threshold: chunks scoring below this are treated as "nothing

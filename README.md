@@ -15,7 +15,7 @@ Most RAG tutorials stop at "embed the docs, search, done". The interesting part 
 
 The pipeline lives in `pipeline.py` and runs five stages for every question:
 
-1. **Chunking** (`chunker.py`) — documents are split into overlapping word-windows (120 words, 20-word overlap by default). The overlap matters: a sentence straddling a boundary would otherwise get cut in half and the retriever could miss it entirely.
+1. **Chunking** (`chunker.py`) — documents are split into overlapping windows (120 words, 20-word overlap by default), or, with `chunker: recursive` in config.yaml, into sentence-aware chunks whose boundaries only land between sentences. The overlap matters: a sentence straddling a boundary would otherwise get cut in half and the retriever could miss it entirely.
 2. **Embeddings** (`embedder.py`) — chunks are turned into vectors with a hashing TF-IDF embedder (see "Honest notes"). The interface is `fit`/`transform`, deliberately shaped like a real embedder so swapping one in is a one-class change.
 3. **Store** (`store.py`) — vectors go into a numpy brute-force store with metadata **pre**-filtering (filter first, score second — doing it the other way round silently kills recall). Same four-method interface as Qdrant/pgvector.
 4. **Retrieval** — two backends behind one interface (`retriever.py`), picked with `retriever:` in config.yaml: `dense` embeds the question and pulls top-k chunks by cosine similarity, `bm25` scores keyword overlap with rank-bm25. Anything scoring below a relevance threshold (`min_score`) is dropped so the generator refuses instead of hallucinating off a junk chunk.
@@ -107,7 +107,7 @@ llm_client.py     free-tier LLM client (gemini | openrouter), stdlib only
 cli.py              demo / interactive entry point
 service.py          FastAPI wrapper: /index, /query, /health
 pipeline.py         RAGPipeline — index + answer, every stage timed
-chunker.py          overlapping word-window chunking
+chunker.py          word-window + sentence-aware recursive chunking
 embedder.py         hashing TF-IDF embedder (fit/transform)  ← swap for sentence-transformers
 retriever.py        dense (embedder + store) and bm25 backends, same interface  ← `retriever:` in config.yaml
 store.py            numpy brute-force store + metadata pre-filter  ← swap for Qdrant

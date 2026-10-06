@@ -14,7 +14,7 @@ import sys
 import time
 import yaml
 
-from chunker import chunk_text
+from chunker import chunk_text, recursive_chunk_text
 from cache import SemanticCache
 from llm_client import FreeLLMClient, FreeLLMError
 from reranker import build_reranker
@@ -224,8 +224,12 @@ class RAGPipeline:
             if self.cache:
                 self.cache.clear()
         all_chunks, all_metas = [], []
+        # chunker pick lives in config: "word" (default, deterministic) or
+        # "recursive" (sentence-aware — boundaries land between sentences)
+        chunk_fn = recursive_chunk_text if self.cfg.get("chunker") == "recursive" \
+            else chunk_text
         for doc in docs:
-            for i, ch in enumerate(chunk_text(
+            for i, ch in enumerate(chunk_fn(
                     doc["text"], self.cfg["chunk_size"], self.cfg["overlap"])):
                 all_metas.append({**doc.get("metadata", {}),
                                   "chunk": i, "hash": self._hash(ch)})
