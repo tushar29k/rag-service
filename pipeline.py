@@ -14,12 +14,28 @@ import sys
 import time
 import yaml
 
-from chunker import chunk_text, recursive_chunk_text
+from chunker import (chunk_text, recursive_chunk_text,
+                      fixed_char_chunk_text, sentence_window_chunk_text)
 from cache import SemanticCache
 from llm_client import FreeLLMClient, FreeLLMError
 from reranker import build_reranker
 from retriever import build_retriever
 from rewriter import build_rewriter, dedupe_results
+
+
+CHUNKERS = {
+    # word (default): deterministic word windows; recursive: sentence-aware
+    # packing; fixed_char: naive char windows (experiment baseline);
+    # sentence_window: one sentence + neighbors per chunk (precision play)
+    "word": chunk_text,
+    "recursive": recursive_chunk_text,
+    # ~5 chars per word — keeps the same chunk_size/overlap knobs roughly
+    # comparable across the word- and char-based strategies
+    "fixed_char": lambda text, size, overlap: fixed_char_chunk_text(
+        text, chunk_size=size * 5, overlap=overlap * 5),
+    "sentence_window": lambda text, size, overlap:
+        sentence_window_chunk_text(text, neighbors=1),
+}
 
 
 def _deep_merge(base, overlay):
@@ -224,10 +240,16 @@ class RAGPipeline:
             if self.cache:
                 self.cache.clear()
         all_chunks, all_metas = [], []
-        # chunker pick lives in config: "word" (default, deterministic) or
-        # "recursive" (sentence-aware — boundaries land between sentences)
-        chunk_fn = recursive_chunk_text if self.cfg.get("chunker") == "recursive" \
-            else chunk_text
+        # chunker pick lives in config: word (default), recursive,
+        # fixed_char or sentence_window — the chunking experiment scored
+        # all four on the same queries (see evals/chunking-experiment.md)
+        chunker_name = self.cfg.get("chunker", "word")
+        if chunker_name not in CHUNKERS:
+            # fail loud — a typo'd chunker should never silently index
+            # with the wrong strategy
+            raise ValueError(f"unknown chunker {chunker_name!r}; expected "
+                             f"one of {sorted(CHUNKERS)}")
+        chunk_fn = CHUNKERS[chunker_name]
         for doc in docs:
             for i, ch in enumerate(chunk_fn(
                     doc["text"], self.cfg["chunk_size"], self.cfg["overlap"])):

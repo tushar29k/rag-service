@@ -1,10 +1,12 @@
-"""Chunking: split documents into overlapping word-windows.
+"""Chunking: split documents into overlapping windows.
 
-Word-based chunking is crude but deterministic, which is exactly what you
-want while you're learning the mechanics. recursive_chunk_text below is the
-sentence-aware alternative (picked with `chunker: recursive` in config):
-it packs whole sentences into chunks so boundaries never slice a sentence
-in half — at the cost of slightly uneven chunk sizes.
+Four strategies, picked with `chunker:` in config:
+- word: overlapping word windows — crude but deterministic (the default)
+- recursive: sentence-aware packing, boundaries land between sentences
+- fixed_char: naive fixed character windows — the dumb baseline, here so
+  the chunking experiment can show what the smarter ones buy you
+- sentence_window: one sentence per chunk padded with neighbors — max
+  precision, more chunks
 """
 import re
 
@@ -69,6 +71,42 @@ def recursive_chunk_text(text, chunk_size=120, overlap=20):
     return chunks
 
 
+def fixed_char_chunk_text(text, chunk_size=600, overlap=100):
+    """Naive fixed character windows — slices mid-word, mid-sentence.
+
+    The dumb baseline for the chunking experiment: whatever the smarter
+    strategies gain, this is what they gain over. Never the default.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    chunks, start = [], 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunks.append(text[start:end])
+        if end == len(text):
+            break
+        start = max(end - overlap, start + 1)  # always move forward
+    return chunks
+
+
+def sentence_window_chunk_text(text, neighbors=1):
+    """One sentence per chunk, padded with `neighbors` sentences each side.
+
+    Max precision: the answer sentence always sits whole inside its chunk,
+    and its context travels with it. Costs more chunks per doc — the
+    experiment weighs that trade.
+    """
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+    chunks = []
+    for i in range(len(sentences)):
+        lo, hi = max(0, i - neighbors), min(len(sentences), i + neighbors + 1)
+        chunks.append(" ".join(sentences[lo:hi]))
+    return chunks
+
+
 if __name__ == "__main__":
     text = " ".join(f"word{i}" for i in range(300))
     chunks = chunk_text(text, chunk_size=120, overlap=20)
@@ -93,4 +131,20 @@ if __name__ == "__main__":
     for sent in _split_sentences(text2):
         assert sent in joined, f"sentence lost: {sent!r}"
     print(f"recursive: {len(rchunks)} chunks, all boundaries on sentences, no sentence lost")
+
+    # fixed_char: 1300 chars, 600-char windows with 100 overlap -> 3 chunks
+    text3 = "x" * 1300
+    fchunks = fixed_char_chunk_text(text3, chunk_size=600, overlap=100)
+    assert len(fchunks) == 3, f"expected 3 chunks, got {len(fchunks)}"
+    assert fchunks[0][-100:] == fchunks[1][:100], "char overlap broken"
+    print(f"fixed_char: {len(fchunks)} chunks, overlap OK")
+
+    # sentence_window: 4 sentences -> 4 chunks, each padded with neighbors
+    text4 = ("Alpha one. Beta two. Gamma three. Delta four.")
+    swchunks = sentence_window_chunk_text(text4, neighbors=1)
+    assert len(swchunks) == 4, f"expected 4 chunks, got {len(swchunks)}"
+    assert swchunks[0] == "Alpha one. Beta two."
+    assert swchunks[1] == "Alpha one. Beta two. Gamma three."
+    assert swchunks[3] == "Gamma three. Delta four."
+    print(f"sentence_window: {len(swchunks)} chunks, padding OK")
     print("chunker self-test OK")
