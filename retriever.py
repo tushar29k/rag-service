@@ -18,7 +18,7 @@ killing the "I don't know" refusal the evals assert on. The saturating
 squash keeps weak matches weak.
 """
 from embedder import _tokenize, build_embedder
-from store import VectorStore
+from store import VectorStore, match_metadata
 
 
 def build_store(cfg, dim):
@@ -113,10 +113,11 @@ class BM25Retriever:
         # contribute noise, not signal, and inflate junk matches
         kept = [t for t in qtok if self._df.get(t, 0) <= len(self._tok) / 2]
         # filter first, score second — same reason as the vector store:
-        # retrieve-then-throw-away silently tanks recall
+        # retrieve-then-throw-away silently tanks recall. Same filter
+        # language as store.py (exact + $gte/$lte ranges) via match_metadata
+        # so dense and sparse agree on what a filter means.
         ids = [i for i, m in enumerate(self._metas)
-               if not filters or
-               all(m.get(k) == v for k, v in filters.items())]
+               if not filters or match_metadata(m, filters)]
         if not ids:
             return []
         raw = self._bm25.get_scores(kept)
@@ -226,6 +227,17 @@ if __name__ == "__main__":
               f"(top score {top[0][1]:.3f}, filters:",
               [m for _, _, m in r.search(r.embed("shipping"),
                                         top_k=5, filters={"i": 2})], ")")
+
+    # both backends speak the same filter language: multi-filter AND +
+    # mongo-style ranges (match_metadata, shared with store.py)
+    r = build_retriever({"retriever": "bm25", "embed_dim": 256})
+    r.index(["refund policy thirty days", "leave policy twenty six weeks"],
+            [{"dept": "sales", "year": 2022}, {"dept": "hr", "year": 2024}])
+    got = [m for _, _, m in r.search(r.embed("refund"), top_k=5,
+                                     filters={"dept": "sales",
+                                              "year": {"$gte": 2020}})]
+    assert got == [{"dept": "sales", "year": 2022}], got
+    print("bm25 metadata filters OK (multi-filter + range)")
 
     # hybrid on a nonsense query: both sub-lists gate out before fusion,
     # so nothing survives to be fused — the refusal path stays intact

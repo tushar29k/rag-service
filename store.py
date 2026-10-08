@@ -12,6 +12,40 @@ import json
 import numpy as np
 
 
+# mongo-style range operators the filter language understands
+_RANGE_OPS = {
+    "$eq": lambda v, t: v == t,
+    "$ne": lambda v, t: v != t,
+    "$gt": lambda v, t: v is not None and v > t,
+    "$gte": lambda v, t: v is not None and v >= t,
+    "$lt": lambda v, t: v is not None and v < t,
+    "$lte": lambda v, t: v is not None and v <= t,
+}
+
+
+def match_metadata(meta, filters):
+    """True when a chunk's metadata satisfies every filter (ANDed).
+
+    Filter values are exact matches, or mongo-style operator dicts:
+        {"dept": "sales"}                          exact match
+        {"dept": "sales", "year": 2024}             multi-filter (AND)
+        {"year": {"$gte": 2020, "$lte": 2023}}      range filter
+    A dict with $-keys is operators; anything else is exact. Missing
+    keys never satisfy a range filter ($ne matches them, mongo-style).
+    """
+    for key, cond in filters.items():
+        val = meta.get(key)
+        if isinstance(cond, dict) and any(k.startswith("$") for k in cond):
+            for op, target in cond.items():
+                if op not in _RANGE_OPS:
+                    raise ValueError(f"unknown filter operator: {op}")
+                if not _RANGE_OPS[op](val, target):
+                    return False
+        elif val != cond:
+            return False
+    return True
+
+
 class VectorStore:
     def __init__(self, dim):
         self.dim = dim
@@ -40,7 +74,7 @@ class VectorStore:
         # then throw away — silently tanks recall when the filter would
         # have removed most of the top-k.
         return [i for i, m in enumerate(self.metas)
-                if all(m.get(k) == v for k, v in filters.items())]
+                if match_metadata(m, filters)]
 
     def search(self, query_vec, top_k=5, filters=None):
         """Top-k chunks as (text, score, meta) tuples, best first."""
@@ -71,13 +105,41 @@ class VectorStore:
 
 if __name__ == "__main__":
     s = VectorStore(dim=4)
-    s.upsert(["refund policy text", "leave policy text"],
-             np.array([[1, 0, 0, 0], [0, 1, 0, 0]], dtype=np.float32),
-             [{"dept": "sales"}, {"dept": "hr"}])
-    res = s.search(np.array([1, 0, 0, 0], dtype=np.float32), top_k=5,
-                   filters={"dept": "sales"})
-    assert res[0][0] == "refund policy text" and len(res) == 1
+    s.upsert(["refund policy text", "leave policy text", "shipping policy text"],
+             np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]],
+                      dtype=np.float32),
+             [{"dept": "sales", "year": 2022},
+              {"dept": "hr", "year": 2021},
+              {"dept": "sales", "year": 2024}])
+    q = np.array([1, 0, 0, 0], dtype=np.float32)
+    texts = lambda res: [t for t, _, _ in res]
+    # exact match still works
+    assert texts(s.search(q, top_k=5, filters={"dept": "sales"})) == \
+        ["refund policy text", "shipping policy text"]
+    # multi-filter: every condition ANDed
+    assert texts(s.search(q, top_k=5,
+                          filters={"dept": "sales", "year": 2022})) == \
+        ["refund policy text"]
+    # range filters: mongo-style $gte/$lte
+    assert texts(s.search(q, top_k=5, filters={"year": {"$gte": 2022}})) == \
+        ["refund policy text", "shipping policy text"]
+    assert texts(s.search(q, top_k=5,
+                          filters={"year": {"$gte": 2022, "$lte": 2023}})) == \
+        ["refund policy text"]
+    # range + exact combined
+    assert texts(s.search(q, top_k=5, filters={"dept": "sales",
+                                              "year": {"$lt": 2023}})) == \
+        ["refund policy text"]
+    # missing keys never satisfy a range filter...
+    assert s.search(q, top_k=5, filters={"region": {"$gte": 1}}) == []
+    # ...but $ne keeps docs missing the key, mongo-style
+    assert len(s.search(q, top_k=5, filters={"dept": {"$ne": "hr"}})) == 2
+    try:
+        s.search(q, top_k=5, filters={"year": {"$between": [2020, 2023]}})
+        raise AssertionError("unknown operator should fail loud")
+    except ValueError:
+        pass
     s.save("/tmp/test_store")
     s2 = VectorStore.load("/tmp/test_store")
-    assert len(s2) == 2
+    assert len(s2) == 3
     print("store OK")

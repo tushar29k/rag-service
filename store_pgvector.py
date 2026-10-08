@@ -58,7 +58,9 @@ class PgVectorStore:
         # in pipeline.py treats both the same
         clauses, params = [], []
         if filters:
-            # filters are exact matches on jsonb metadata keys
+            # exact-match filters on jsonb metadata keys only — the range
+            # operators ($gte/$lte/...) are a numpy/BM25 thing for now;
+            # an operator dict here stringifies and matches nothing
             clauses = ["meta ->> %s = %s"] * len(filters)
             for k, v in filters.items():
                 params += [k, str(v)]
