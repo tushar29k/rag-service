@@ -1,20 +1,23 @@
 """Eval runner: recall@k + evidence coverage on the golden set,
-plus the nDCG@5 lift reranking buys you.
+plus the nDCG@5 lift reranking buys you, plus RAGAS-style judge scores
+(faithfulness + answer relevance) on the answerable questions.
 
     python3 evals/run_eval.py                    # three-way comparison table
     python3 evals/run_eval.py --retriever hybrid # detail for one backend
 
 What it checks, per question:
-  recall@3  — did we retrieve the right document in the top 3?
-  evidence  — do the retrieved chunks actually contain the answer keywords?
-  ndcg@5    — how well is the top-5 ordered, rerank on vs off?
+  recall@3        — did we retrieve the right document in the top 3?
+  evidence        — do the retrieved chunks actually contain the answer keywords?
+  ndcg@5          — how well is the top-5 ordered, rerank on vs off?
+  faithfulness    — are the answer's claims supported by the retrieved
+                    context? (mock judge — see evals/judge.py # SWAP)
+  answer_relevance — does the answer address the question, judged via
+                    reverse-generated questions? (mock judge)
 
-Why "evidence" and not answer faithfulness? The generator here is an
-extractive mock (see pipeline.py # SWAP), so answer-level faithfulness
-wouldn't tell us anything real. What this pipeline actually owns is
-retrieval quality — that's what we assert on. Once a real LLM goes in,
-add an LLM-as-judge check on top: "is the answer supported by the
-citations?"
+Recall/evidence/nDCG assert on retrieval quality; the two judge scores
+assert on the generation stage. The unanswerable golden questions are
+skipped for the judge scores — they test refusal, not groundedness, and
+a clean "I don't know" is trivially faithful.
 
 Graded relevance (0/1/2) for nDCG comes straight from the golden
 annotations: expected_doc + must_contain keywords, which already existed
@@ -25,7 +28,8 @@ same grades.
 
 The default run scores dense, bm25 and hybrid on the same 20-question
 golden set, prints the three-way table, then the rerank lift per
-backend — one command, no config edits, same corpus for everything.
+backend, then the judge scores per backend — one command, no config
+edits, same corpus for everything.
 """
 import argparse
 import json
@@ -33,7 +37,9 @@ import math
 import sys
 
 sys.path.insert(0, ".")
+sys.path.insert(0, "evals")
 from pipeline import RAGPipeline
+from judge import faithfulness, answer_relevance
 
 BACKENDS = ("dense", "bm25", "hybrid")
 
@@ -138,6 +144,23 @@ def evaluate_rerank(name, golden):
             reranker_name)
 
 
+def evaluate_judge(name, golden):
+    # answerable questions only — refusal is tested elsewhere, and a
+    # clean "I don't know" is trivially faithful. same corpus, one
+    # backend at a time, mock judge from evals/judge.py
+    qa = [g for g in golden if g["expected_doc"] is not None]
+    rag = RAGPipeline(overrides={"retriever": name})
+    rag.index_documents(json.load(open("data/sample_docs.json")))
+    f_scores, r_scores = [], []
+    for g in qa:
+        res = rag.answer(g["question"], filters=g["filters"], top_k=3)
+        context = "\n\n".join(c["text"] for c in res["citations"])
+        f_scores.append(faithfulness(res["answer"], context))
+        r_scores.append(answer_relevance(g["question"], res["answer"]))
+    n = len(qa)
+    return (sum(f_scores) / n, sum(r_scores) / n, n)
+
+
 def main():
     ap = argparse.ArgumentParser()
     # run the same golden set against one backend without editing config
@@ -170,6 +193,19 @@ def main():
         print(f"{name:10s} {off:>9.3f} {on:>6.3f} {on - off:>+7.3f}")
     _, off, on, _ = default
     print(f"rerank ndcg@5: {on:.3f} (lift {on - off:+.3f})")
+
+    # ragas-style answer scores: mock LLM judge, answerable questions
+    # only. faithfulness checks the answer against the context it was
+    # generated from; answer relevance checks it against the question.
+    # the extractive mock quotes its context, so expect faithfulness to
+    # sit high — the metric's real job starts when a generative LLM swaps
+    # in behind judge.py's # SWAP
+    judges = [(name,) + evaluate_judge(name, golden) for name in BACKENDS]
+    jn = judges[0][3]
+    print(f"\njudge scores (mock judge, n={jn} answerable questions)")
+    print(f"{'retriever':10s} {'faithfulness':>12s} {'answer_rel':>10s}")
+    for name, f, r, _ in judges:
+        print(f"{name:10s} {f:>12.3f} {r:>10.3f}")
 
 
 if __name__ == "__main__":
