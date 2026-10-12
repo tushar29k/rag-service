@@ -136,6 +136,68 @@ Run the same golden set against the BM25 backend with `python3 evals/run_eval.py
 - **`min_score` (0.15) was tuned by hand** against the golden set, not derived from anything principled. Re-tune it when the corpus changes.
 - **Config profiles:** `config.yaml` is the dev default. Setting `RAG_PROFILE=prod` layers `config.prod.yaml` on top of it at startup (nested dicts merge key by key, scalars and lists are replaced — see `load_config` in `pipeline.py`). A missing overlay file fails loudly instead of silently running dev defaults. The active profile is reported by `GET /info`. Make your own with `config.<name>.yaml` — it must live next to `config.yaml`.
 
+## Going to production
+
+The runbook for taking the dev setup above to a real corpus. Every swap point is already wired — this section is where each one points.
+
+### 1. The embedder swap (do this first)
+
+`embedder.py` is hashing TF-IDF by default. Set `embedder_backend: st` in `config.yaml` and `build_embedder()` lazy-loads sentence-transformers (`all-MiniLM-L6-v2`, 384 dims); if the package or the model can't load, it falls back to hashing with a log line — never a crash. Bigger model, no code change: set `st_model` to e.g. `bge-base-en-v1.5` (that's the `# SWAP` marker in `embedder.py`).
+
+Two things bite here:
+
+- **`embed_dim` must match the model.** `config.yaml` ships `embed_dim: 2048` — that's the hashing width. Set it to 384 for all-MiniLM-L6-v2 (768 for bge-base) or every vector lands in a store built for the wrong dimension.
+- **Re-tune `min_score`.** The 2026-10-11 threshold sweep (`evals/threshold-sweep.md`, produced by `evals/threshold_sweep.py`) found best F1 at dense 0.15 / BM25 0.60 / hybrid 0.50 on hashing embeddings. Neural embeddings shift every curve — re-run the sweep and take the new best-F1 threshold (ties go to the higher, more conservative value). One number does not fit all backends.
+
+The semantic cache has its own embedder with a `# SWAP` note (`cache.py::_embed`) — hashing bag-of-words again. Point it at the pipeline's embedder for production so cache hits use real similarity.
+
+### 2. Indexing 100k docs
+
+The numpy store (`store.py`) is O(n·d) per query — fine to ~100K chunks. At 100k docs with default chunking (`chunk_size: 120`, `overlap: 20`) you're looking at roughly 5–10 chunks per doc, well past where brute force hurts — so this is also the store-swap moment (step 3). The mechanics of getting docs in:
+
+- **Batch the writes.** `POST /index` accepts one doc or a list, and every call bumps `index_version`. Push a few hundred to a thousand docs per request from your indexing client — `/health` reports the version, so you can watch it climb and resume where a failed batch left off.
+- **Indexing is idempotent.** `pipeline.index_documents()` dedupes chunks on content hash before upsert, so re-sending a batch is a no-op — resume safety is free.
+- **Pick the chunker deliberately.** `chunker: word` (default) won the 4-way experiment in `evals/chunking-experiment.md` on the fixture corpus; `recursive` is the better production pick for long-form docs since chunk boundaries only ever land between sentences; `sentence_window` maximizes precision at the cost of more chunks. More chunks = more storage and deeper retrieval lists to fuse, so don't default to sentence_window.
+- **Metadata first, filters later.** `/query` `filters` run against chunk `meta` via `match_metadata()` in `store.py` — exact match plus mongo-style `$eq/$ne/$gt/$gte/$lt/$lte`. Put whatever you'll filter on (source, year, department) in the doc metadata at index time. The pgvector/Qdrant backends only support exact-match filters today, so keep production filters to exact matches until that's extended.
+
+### 3. Swapping the store (Qdrant or pgvector)
+
+The store contract is four methods on one interface (`store.py`): `upsert(texts, embs, metas)`, `search(query_vec, top_k, filters)` returning `(text, score, meta)` tuples best-first, `save(path)`, `load(path)`. The pipeline talks to the interface, never the implementation:
+
+- **Qdrant:** implement the four methods on `QdrantClient` in a new `store_qdrant.py` (the file-level `# SWAP` comment in `store.py` says exactly this), then flip `store_backend:` in `config.yaml`.
+- **pgvector:** already shipped as `store_pgvector.py` — `docker-compose.yml` stands up Postgres + pgvector locally, `PGVECTOR_DSN` points at it, `store_backend: pgvector` selects it. Its `search()` returns `1 - cosine_distance` so the score scale lines up with the numpy store's cosine similarity and the pipeline's `min_score` gate applies unchanged.
+- **The pre-filter invariant:** whichever backend you write, filters run *before* scoring (the recall guarantee `store.py::_filtered_ids` encodes — retrieve-then-throw-away silently tanks recall). `BM25Retriever.search` reuses `match_metadata()` so dense and sparse agree on what a filter means.
+
+### 4. Config: what changes for prod
+
+`RAG_PROFILE=prod` layers `config.prod.yaml` over `config.yaml` at startup (nested dicts deep-merge, scalars and lists are replaced; a missing overlay raises instead of silently running dev defaults — see `load_config` in `pipeline.py`). The shipped overlay moves `top_k` 3→5, `min_score` 0.15→0.2, `hybrid_depth` 20→40, the semantic cache to 1024 entries, and prod timings into `logs/prod-latency.jsonl`. The active profile shows up in `GET /info`.
+
+Features worth switching on for a real corpus — all off by default so the demo's behavior doesn't change under you:
+
+- `reranker: true` — pulls `rerank_depth: 20` candidates and re-scores jointly down to `rerank_top_n: 5`. Use `rerank_backend: cross_encoder` when the model (`rerank_model: BAAI/bge-reranker-base`) can be cached; it degrades to the lexical stand-in with a log line when it can't, and the lexical path is honest but weak (measured nDCG@5 lift of −0.050 in `evals/run_eval.py`).
+- `rewrite: true` — fans one ambiguous query into `rewrite_variants: 3` variants, lists merge and dedupe (mock LLM behind the `# SWAP` in `rewriter.py` — point it at the real model).
+- `retriever: hybrid` — reciprocal rank fusion of dense + BM25 at `hybrid_alpha: 0.5`.
+
+### 5. Latency and cost: what to expect
+
+Every stage is timed (`pipeline._record_latency` appends one JSON line per query to `logs/latency.jsonl`, gitignored), and every answer carries its per-stage `breakdown`. `python3 evals/latency_summary.py` prints the p50/p99 table. Where the time goes:
+
+- Hashing embed + numpy store: sub-millisecond. The `st` swap moves the embed stage to tens of milliseconds per query on CPU; reranking adds a cross-encoder call per candidate (20 → 5).
+- Generation dominates once it's real: the extractive mock is instant; a real LLM call (Gemini free tier via `LLM_API_KEY`, or `generator: openai` with `OPENAI_API_KEY`/`LLM_API_KEY`, `LLM_MODEL` and `OPENAI_BASE_URL` overrides in `llm_client.py`) takes seconds — streamable via `POST /query-stream` (SSE: meta → token* → done).
+- The semantic cache (`semantic_cache.enabled`, threshold 0.85) skips the whole pipeline on repeated questions. `/health` reports hits/misses/hit_rate and cached answers carry `"cached": true`.
+
+### 6. Re-running the evals after every swap
+
+The eval suite is the detector — run it after each change, not just at the end:
+
+```bash
+python3 evals/run_eval.py                 # recall@3, evidence, faithfulness + answer-relevance, all three retrievers
+python3 evals/run_eval.py --retriever bm25
+python3 evals/threshold_sweep.py          # re-tune min_score on the new backend; writes evals/threshold-sweep.md
+```
+
+The 2026-10-11 baseline: dense 19/20, BM25 20/20, hybrid 20/20 recall@3; faithfulness 0.944–1.000 via `evals/judge.py`; rerank lift pending the neural cross-encoder. If a swap drops recall@3, it regressed.
+
 ## Things worth trying
 
 - Set `chunk_size: 30` in `config.yaml` and re-run evals. Which questions lose recall? Why do small chunks hurt some queries?
