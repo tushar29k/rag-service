@@ -135,6 +135,11 @@ class RAGPipeline:
         # byte-for-byte identical with rewriting disabled
         self.rewriter = build_rewriter(self.cfg)
         self.index_version = self.cfg.get("index_version", "v1")
+        # the /health endpoint reports these — docs counts builds' inputs
+        # (including re-indexed ones), last_indexed_at stays None until
+        # the first /index call lands
+        self.n_docs = 0
+        self.last_indexed_at = None
         # generator picks the answer backend (config.yaml): mock keeps the
         # extractive stand-in, openai needs a key and falls back to mock
         # cleanly without one, auto preserves the old key->real-model
@@ -228,6 +233,26 @@ class RAGPipeline:
         n = int(cur[1:]) if cur.startswith("v") and cur[1:].isdigit() else 0
         self.index_version = f"v{n + 1}"
 
+    def backend_summary(self):
+        # effective backend names for the /health block — type names, not
+        # config values, so a silent st->hashing or cross-encoder->lexical
+        # fallback shows up instead of the configured name
+        r = self.retriever
+        emb = getattr(r, "embedder", None) or getattr(
+            getattr(r, "_dense", None), "embedder", None)
+        return {
+            "embedder": (type(emb).__name__.replace("Embedder", "").lower()
+                         if emb else "none"),
+            "store": self.cfg.get("store_backend", "numpy"),
+            "retriever": self.cfg.get("retriever", "dense"),
+            "rerank": (type(self.reranker).__name__.replace("Reranker",
+                                                            "").lower()
+                       if self.reranker else None),
+            "rewrite": bool(self.rewriter),
+            "generator": (self.llm.provider if self.llm is not None
+                          else "mock"),
+        }
+
     def index_documents(self, docs):
         """Index a batch of {text, metadata} docs.
 
@@ -237,6 +262,8 @@ class RAGPipeline:
         """
         if docs:
             self._bump_index_version()
+            self.n_docs += len(docs)
+            self.last_indexed_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             if self.cache:
                 self.cache.clear()
         all_chunks, all_metas = [], []

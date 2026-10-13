@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-13",
+  "golden_questions": 20,
+  "per_backend": {
+    "dense": {
+      "recall@3": 19,
+      "evidence": 19
+    },
+    "bm25": {
+      "recall@3": 20,
+      "evidence": 19
+    },
+    "hybrid": {
+      "recall@3": 20,
+      "evidence": 19
+    }
+  },
+  "rerank_dense": {
+    "off_ndcg5": 0.95,
+    "on_ndcg5": 0.9,
+    "lift": -0.05,
+    "reranker": "LexicalReranker"
+  },
+  "judge_mock": {
+    "dense": {
+      "faithfulness": 0.944,
+      "answer_relevance": 0.205
+    },
+    "bm25": {
+      "faithfulness": 1.0,
+      "answer_relevance": 0.211
+    },
+    "hybrid": {
+      "faithfulness": 1.0,
+      "answer_relevance": 0.211
+    }
+  },
+  "judge_n": 18
+}

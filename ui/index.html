@@ -147,7 +147,7 @@ footer{margin-top:3rem;text-align:center;color:var(--faint);font-size:.75rem;let
 </div>
 
 <div class="rule">❦</div>
-<footer>every answer cites its shelf · nothing leaves the reading room ungrounded</footer>
+<footer id="colophon">every answer cites its shelf · nothing leaves the reading room ungrounded</footer>
 
 <script>
 function show(which){
@@ -159,6 +159,16 @@ function show(which){
 fetch('/health').then(function(r){return r.json()}).then(function(h){
   document.getElementById('health').classList.add('ok');
   document.getElementById('health').title = h.chunks + ' passages on the shelves';
+  // engine-room small print: live backends + the last eval's scores,
+  // read straight from /health so the footer can never go stale
+  var bits=[];
+  if(h.index && h.index.docs){bits.push(h.index.docs+' documents · '+h.chunks+' passages')}
+  if(h.backends){bits.push([h.backends.retriever,h.backends.embedder,h.backends.generator].join(' · '))}
+  if(h.last_eval){
+    var d=h.last_eval.per_backend.dense;
+    bits.push('evals '+h.last_eval.date+' · dense '+d['recall@3']+'/'+h.last_eval.golden_questions+' recall@3');
+  }
+  if(bits.length){document.getElementById('colophon').textContent=bits.join(' — ')}
 }).catch(function(){});
 // llm stamp: green when a real model answers, amber on the offline mock
 fetch('/info').then(function(r){return r.json()}).then(function(i){

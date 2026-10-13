@@ -77,7 +77,7 @@ python3 evals/run_eval.py
 uvicorn service:app --reload
 ```
 
-Then `POST /query` with `{"text": "What is the refund window?", "filters": {"country": "IN"}}` — you get the answer, citations with scores, latency, and the per-stage breakdown. `POST /index` adds documents, `GET /health` shows the index version and chunk count.
+Then `POST /query` with `{"text": "What is the refund window?", "filters": {"country": "IN"}}` — you get the answer, citations with scores, latency, and the per-stage breakdown. `POST /index` adds documents, `GET /health` shows index stats (version, doc and chunk counts), the active backend names, cache stats, and the last eval score snapshot.
 
 ### Use your own key
 

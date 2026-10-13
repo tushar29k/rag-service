@@ -35,6 +35,7 @@ import argparse
 import json
 import math
 import sys
+from datetime import date
 
 sys.path.insert(0, ".")
 sys.path.insert(0, "evals")
@@ -206,6 +207,28 @@ def main():
     print(f"{'retriever':10s} {'faithfulness':>12s} {'answer_rel':>10s}")
     for name, f, r, _ in judges:
         print(f"{name:10s} {f:>12.3f} {r:>10.3f}")
+
+    # one snapshot per run: the /health endpoint reads this file, so the
+    # demo page always shows how the live build scored — not a stale claim
+    _, off, on, reranker = default
+    snapshot = {
+        "date": date.today().isoformat(),
+        "golden_questions": n,
+        "per_backend": {
+            name: {"recall@3": recall, "evidence": evidence}
+            for name, recall, evidence, _ in rows},
+        "rerank_dense": {"off_ndcg5": round(off, 3),
+                         "on_ndcg5": round(on, 3),
+                         "lift": round(on - off, 3),
+                         "reranker": reranker},
+        "judge_mock": {
+            name: {"faithfulness": round(f, 3), "answer_relevance": round(r, 3)}
+            for name, f, r, _ in judges},
+        "judge_n": jn,
+    }
+    with open("evals/last-eval-snapshot.json", "w") as f:
+        json.dump(snapshot, f, indent=2)
+    print("\nsnapshot written to evals/last-eval-snapshot.json")
 
 
 if __name__ == "__main__":

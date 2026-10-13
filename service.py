@@ -4,7 +4,8 @@ Endpoints:
   POST /index        {text, metadata} or [{text, metadata}, ...]  -> chunk + embed + upsert
   POST /query        {text, filters?, top_k?} -> grounded answer + citations + timings
   POST /query-stream {text, filters?, top_k?} -> SSE: meta, then tokens, then done
-  GET  /health                          -> index version + chunk count
+  GET  /health                          -> index stats, active backends,
+                                         cache stats, last eval snapshot
 """
 import json
 from typing import Union
@@ -57,8 +58,28 @@ def health():
     cache = (rag.cache.stats() if rag.cache else
              {"enabled": False, "hits": 0, "misses": 0, "hit_rate": 0.0,
               "size": 0})
-    return {"status": "ok", "index_version": rag.index_version,
-            "chunks": len(rag.retriever), "cache": cache}
+    return {"status": "ok",
+            # chunks stays top-level — the demo ui tooltip reads it
+            "chunks": len(rag.retriever),
+            "index": {"version": rag.index_version,
+                      "docs": rag.n_docs,
+                      "chunks": len(rag.retriever),
+                      "last_indexed_at": rag.last_indexed_at},
+            "backends": rag.backend_summary(),
+            "cache": cache,
+            "last_eval": _load_eval_snapshot()}
+
+
+def _load_eval_snapshot():
+    # written by `python3 evals/run_eval.py` after every full eval run;
+    # None until the first run — a fresh clone reports null, not stale data
+    snap = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                         "evals", "last-eval-snapshot.json")
+    try:
+        with open(snap) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 @app.get("/info")
