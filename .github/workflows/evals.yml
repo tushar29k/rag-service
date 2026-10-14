@@ -1,0 +1,38 @@
+# CI: evals on every push/PR to main. Fails if any backend's recall@3 drops
+# below the checked-in baseline (evals/last-eval-snapshot.json). The evals
+# run against the hashing-TF-IDF default config — no model downloads, no
+# keys — so this stays cheap and green on every push.
+name: evals
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Byte-compile sources
+        run: python -m py_compile $(git ls-files '*.py')
+
+      # run_eval.py overwrites evals/last-eval-snapshot.json, so the
+      # checked-in numbers are copied aside as the gate baseline first
+      - name: Save recall baseline
+        run: cp evals/last-eval-snapshot.json /tmp/eval-baseline.json
+
+      - name: Run evals
+        run: python evals/run_eval.py
+
+      - name: Gate on recall@3
+        run: python evals/ci_gate.py --baseline /tmp/eval-baseline.json --current evals/last-eval-snapshot.json

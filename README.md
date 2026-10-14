@@ -113,20 +113,24 @@ retriever.py        dense (embedder + store) and bm25 backends, same interface  
 store.py            numpy brute-force store + metadata pre-filter  ← swap for Qdrant
 config.yaml         chunk size, overlap, top_k, min_score, index version
 data/sample_docs.json   the docs the demo indexes
-evals/golden.jsonl      8 golden Q&A pairs the evals assert against
+evals/golden.jsonl      20 golden Q&A pairs the evals assert against
 evals/run_eval.py       recall@3 + evidence coverage + p50 latency
+evals/ci_gate.py        fails CI when recall@3 drops below the checked-in baseline
+.github/workflows/evals.yml   runs the evals on every push to main
 ```
 
 ## Evals
 
-`python3 evals/run_eval.py` runs 8 golden questions from `evals/golden.jsonl` against the pipeline and checks two things per question:
+`python3 evals/run_eval.py` runs 20 golden questions from `evals/golden.jsonl` against the pipeline and checks two things per question:
 
 - **recall@3** — is the expected document among the top-3 retrieved chunks?
 - **evidence coverage** — do the retrieved chunks actually contain the answer keywords?
 
-It also reports p50 latency. Current numbers: **recall@3: 8/8, evidence: 8/8**. One of the 8 questions ("Who is the CEO?") is deliberately unanswerable — for that one, the check is that the system refuses instead of making something up. If you change chunking or retrieval settings, re-run this; it's the fastest way to see whether you helped or hurt.
+It also reports p50 latency. Current numbers (2026-10-13 snapshot): dense 19/20, BM25 20/20, hybrid 20/20 recall@3. One of the questions ("Who is the CEO?") is deliberately unanswerable — for that one, the check is that the system refuses instead of making something up. If you change chunking or retrieval settings, re-run this; it's the fastest way to see whether you helped or hurt.
 
 Run the same golden set against the BM25 backend with `python3 evals/run_eval.py --retriever bm25` (or set `retriever: bm25` in `config.yaml` to make it the default for the CLI and the API).
+
+CI runs these evals on every push to `main` (`.github/workflows/evals.yml`) and fails the build if any backend's recall@3 drops below the checked-in baseline in `evals/last-eval-snapshot.json` — the same file `GET /health` reports as the last eval score. So re-run `evals/run_eval.py` and commit the refreshed snapshot whenever you change retrieval.
 
 ## Honest notes
 
