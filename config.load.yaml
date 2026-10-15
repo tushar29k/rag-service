@@ -1,0 +1,9 @@
+# Load-test overlay: disables the semantic cache (repeated questions must hit
+# the pipeline, not the cache) and pins the generator to the keyless mock,
+# so the run is offline-reproducible. Used by evals/load_test.py via
+# RAG_PROFILE=load.
+generator: mock
+semantic_cache:
+  enabled: false
+  threshold: 0.85
+  max_entries: 256
