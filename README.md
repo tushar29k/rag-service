@@ -1,5 +1,26 @@
 # rag-service
 
+## Release notes — v2.0
+
+A production-plumbed RAG service: chunk → embed → retrieve → generate with BM25 + dense hybrid retrieval (RRF), a rerank interface, query rewriting, a semantic cache, config profiles, batch indexing, SSE streaming, CI-gated evals, and ADRs — all measured, not hand-waved. Every number below comes from this repo's own evals (extractive mock generator, hashing TF-IDF default unless stated):
+
+**Retrieval quality — SQuAD slice** (`evals/squad_demo.py`, 2026-10-17: 302 questions over 2,067 paragraphs; recall@3 = the exact source paragraph in the top-3 citations):
+
+| backend | recall@3 | p50 ms/query | p99 ms/query |
+|---------|----------|--------------|--------------|
+| dense | 223/302 (73.8%) | 9.7 | 53.1 |
+| bm25 | 262/302 (86.8%) | 8.2 | 31.2 |
+| hybrid | 248/302 (82.1%) | 20.1 | 43.8 |
+
+- BM25's lead is expected, not a surprise: SQuAD's questions are entity-heavy and asked cold, which plays to keyword matching. These measure retrieval mechanics on the hashing TF-IDF fallback — a neural embedder (the `backend: st` swap) should move dense/hybrid up.
+- Golden set (`evals/last-eval-snapshot.json`, 20 questions): recall@3 dense 19/20, bm25 20/20, hybrid 20/20; rerank nDCG@5 lift −0.050 on the lexical fallback — an honest negative, the real lift waits on the neural cross-encoder; mock-judge faithfulness 0.944 (dense) / 1.000 (bm25, hybrid) over 18 answerable questions.
+
+**Latency — load test** (`evals/load_test.py`, 2026-10-15; keyless mock generator, golden questions): client p50 17.8 / 33.8 / 50.4 ms at concurrency 1 / 4 / 16, server p50 0.2–0.3 ms, 0 errors. Per-stage timings ship with every answer and land in `logs/latency.jsonl`; `python3 evals/latency_summary.py` prints the p50/p99 table.
+
+**Cost**: $0/query on the default path — hashing embedder, numpy store, extractive mock, all self-hosted, zero API keys. Flip `generator: openai` and set `LLM_API_KEY` (or `OPENAI_API_KEY`): retrieval, citations, and the response contract stay identical, and you pay whatever your provider charges per token — nothing in this repo marks it up. On the live demo the key lives in Render's env vars, never in the code.
+
+That's v2.0: hybrid retrieval you can trust the numbers on, a streaming API, evals that fail the build if recall@3 drops (`.github/workflows/evals.yml`), and a swap guide for 100k docs, Qdrant, and real embeddings — see "Going to production" below.
+
 A retrieval-augmented generation (RAG) system built like the real thing — chunking, embeddings, a vector store, retrieval, grounded answers with citations — but with zero API keys and zero GPU, so you can actually run the whole loop on your laptop.
 
 ## Live demo
