@@ -1,0 +1,30 @@
+# Neural overlay — BM25 + neural embeddings + cross-encoder rerank, all on
+# ONNX Runtime so it runs without any retrieval API and without PyTorch.
+# Loaded on top of config.yaml when RAG_PROFILE=neural is set; only the
+# keys below change.
+#
+# Usage:  RAG_PROFILE=neural uvicorn service:app
+retriever: hybrid
+# the cross-encoder scores single-topic text far better than a 120-word
+# window that spans sections, so chunks stay small and end on sentences
+chunker: recursive
+chunk_size: 60
+overlap: 10
+embedder_backend: fastembed
+fastembed_model: BAAI/bge-small-en-v1.5
+rerank: true
+rerank_backend: fastembed
+rerank_model: Xenova/ms-marco-MiniLM-L-6-v2
+# every candidate costs one cross-encoder pass, so keep this shallow on a
+# small CPU
+rerank_depth: 10
+rerank_top_n: 3
+# Cross-encoder scores are sigmoid-squashed logits, a different scale from
+# cosine: paraphrases that rank first can still score 0.00002, and the 0.15
+# default refused them. Off-topic questions overlap that range, so this gate
+# only drops the clear junk — the rest is left to the prompt's "say you don't
+# know". Picked by hand on 40 questions; re-tune when the corpus changes.
+min_score: 0.00002
+# downloaded once into the project dir, so a build step can bake the models
+# in instead of re-downloading them on every cold start
+model_cache: .model_cache
