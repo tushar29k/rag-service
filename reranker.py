@@ -77,6 +77,28 @@ class CrossEncoderReranker(Reranker):
         return [(t, s, m) for s, t, m in scored[:top_n]]
 
 
+class FastEmbedReranker(Reranker):
+    """The same joint (query, chunk) scoring as CrossEncoderReranker, on
+    ONNX Runtime instead of PyTorch, so it fits a 512 MB instance."""
+
+    def __init__(self, model_name, cache_dir=None):
+        # lazy import: heavy and optional, like the embedder's
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        self._model = TextCrossEncoder(model_name, cache_dir=cache_dir,
+                                       threads=1)
+
+    def rerank(self, question, candidates, top_n=5):
+        if not candidates:
+            return []
+        logits = self._model.rerank(question,
+                                    [text for text, _, _ in candidates],
+                                    batch_size=4)
+        scored = [(_sigmoid(float(s)), text, meta)
+                  for (text, _, meta), s in zip(candidates, logits)]
+        scored.sort(key=lambda x: -x[0])
+        return [(t, s, m) for s, t, m in scored[:top_n]]
+
+
 class LexicalReranker(Reranker):
     """Zero-dep fallback: rank candidates by query-token overlap.
 
@@ -107,10 +129,18 @@ def build_reranker(cfg):
     sentence-transformers). It degrades to the lexical fallback with a
     loud log line when the package or the model can't load, so an
     offline box still reranks instead of crashing. "lexical" picks the
-    fallback directly. Anything unrecognised -> lexical — a typo in
-    config shouldn't take the service down.
+    fallback directly. "fastembed" is the cross-encoder on ONNX Runtime
+    for small boxes, with the same fallback. Anything unrecognised ->
+    lexical — a typo in config shouldn't take the service down.
     """
     model = cfg.get("rerank_model", "BAAI/bge-reranker-base")
+    if cfg.get("rerank_backend") == "fastembed":
+        try:
+            return FastEmbedReranker(model, cache_dir=cfg.get("model_cache"))
+        except Exception as e:  # noqa: BLE001 - any load failure means fall back
+            print(f"reranker: fastembed unavailable ({e}) — "
+                  "using lexical fallback")
+            return LexicalReranker()
     if cfg.get("rerank_backend", "cross_encoder") == "cross_encoder":
         try:
             r = CrossEncoderReranker(model)

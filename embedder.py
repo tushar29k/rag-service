@@ -92,6 +92,30 @@ class STEmbedder:
         return np.asarray(v, dtype=np.float32)
 
 
+class FastEmbedEmbedder:
+    """Neural embeddings on ONNX Runtime instead of PyTorch, same
+    fit/transform shape — this is the one that fits a 512 MB instance,
+    which sentence-transformers' torch dependency doesn't."""
+
+    def __init__(self, model="BAAI/bge-small-en-v1.5", cache_dir=None):
+        # lazy import, same reason as STEmbedder: heavy and optional
+        from fastembed import TextEmbedding
+        # one thread: extra ONNX threads cost memory the free tier's
+        # fraction of a CPU can't use anyway
+        self._model = TextEmbedding(model, cache_dir=cache_dir, threads=1)
+        self.dim = len(next(iter(self._model.embed(["dim probe"]))))
+
+    def fit(self, docs):
+        pass  # no fitting to do — the model's already trained
+
+    def transform(self, texts):
+        # small batches keep peak memory flat on big /index calls
+        v = np.array(list(self._model.embed(texts, batch_size=8)),
+                     dtype=np.float32)
+        # normalised the same way, so the store's cosine math doesn't change
+        return v / np.clip(np.linalg.norm(v, axis=1, keepdims=True), 1e-9, None)
+
+
 def build_embedder(cfg):
     """Pick the embedder backend from config.yaml.
 
@@ -99,8 +123,16 @@ def build_embedder(cfg):
     neural embeddings — but if the import or the model load fails (offline
     box, no cached model), we fall back to hashing instead of crashing the
     service. The fallback is loud so nobody deploys st and silently gets
-    hashing.
+    hashing. "fastembed" is the same idea on ONNX Runtime, for small boxes.
     """
+    if cfg.get("embedder_backend") == "fastembed":
+        try:
+            return FastEmbedEmbedder(
+                model=cfg.get("fastembed_model", "BAAI/bge-small-en-v1.5"),
+                cache_dir=cfg.get("model_cache"))
+        except Exception as e:  # noqa: BLE001 — any failure here means offline
+            print(f"[embedder] fastembed backend failed "
+                  f"({type(e).__name__}: {e}); falling back to hashing")
     if cfg.get("embedder_backend") == "st":
         try:
             return STEmbedder(model=cfg.get("st_model", "all-MiniLM-L6-v2"))
