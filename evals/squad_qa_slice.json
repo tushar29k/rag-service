@@ -1,0 +1,305 @@
+{
+  "version": "squad-qa-slice-1.0-9b465d64775a",
+  "data": [
+    {
+      "title": "The Nile",
+      "paragraphs": [
+        {
+          "context": "The Nile is generally regarded as the longest river in the world, stretching about 6,650 kilometres through northeastern Africa. It flows northward through eleven countries before emptying into the Mediterranean Sea. Its two main tributaries are the White Nile and the Blue Nile, which meet near Khartoum in Sudan.",
+          "qas": [
+            {
+              "id": "sq01",
+              "question": "Into which sea does the Nile empty?",
+              "answers": [
+                {
+                  "text": "the Mediterranean Sea",
+                  "answer_start": 194
+                }
+              ]
+            },
+            {
+              "id": "sq02",
+              "question": "Near which city do the White Nile and the Blue Nile meet?",
+              "answers": [
+                {
+                  "text": "Khartoum",
+                  "answer_start": 296
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Photosynthesis",
+      "paragraphs": [
+        {
+          "context": "Photosynthesis is the process by which green plants convert sunlight, water and carbon dioxide into oxygen and glucose. It takes place mainly in the leaves, inside organelles called chloroplasts. The green pigment chlorophyll absorbs the sunlight that powers the reaction.",
+          "qas": [
+            {
+              "id": "sq03",
+              "question": "Inside which organelles does photosynthesis take place?",
+              "answers": [
+                {
+                  "text": "chloroplasts",
+                  "answer_start": 182
+                }
+              ]
+            },
+            {
+              "id": "sq04",
+              "question": "Which pigment absorbs the sunlight that powers photosynthesis?",
+              "answers": [
+                {
+                  "text": "chlorophyll",
+                  "answer_start": 214
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Marie Curie",
+      "paragraphs": [
+        {
+          "context": "Marie Curie was a Polish-born physicist and chemist who conducted pioneering research on radioactivity. She was the first woman to win a Nobel Prize, and the only person to win Nobel Prizes in two different sciences, physics and chemistry. She died in 1934 from aplastic anaemia, likely caused by her long exposure to radiation.",
+          "qas": [
+            {
+              "id": "sq05",
+              "question": "What did Marie Curie conduct pioneering research on?",
+              "answers": [
+                {
+                  "text": "radioactivity",
+                  "answer_start": 89
+                }
+              ]
+            },
+            {
+              "id": "sq06",
+              "question": "In which two sciences did Marie Curie win Nobel Prizes?",
+              "answers": [
+                {
+                  "text": "physics and chemistry",
+                  "answer_start": 217
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "The printing press",
+      "paragraphs": [
+        {
+          "context": "Around 1440, Johannes Gutenberg developed a printing press with movable metal type in Mainz, Germany. The press could produce hundreds of pages a day, far more than hand copying. Within a few decades, printing shops had spread across Europe and the price of books fell sharply.",
+          "qas": [
+            {
+              "id": "sq07",
+              "question": "Who developed the movable-type printing press?",
+              "answers": [
+                {
+                  "text": "Johannes Gutenberg",
+                  "answer_start": 13
+                }
+              ]
+            },
+            {
+              "id": "sq08",
+              "question": "In which city did Gutenberg develop his printing press?",
+              "answers": [
+                {
+                  "text": "Mainz",
+                  "answer_start": 86
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Honeybees",
+      "paragraphs": [
+        {
+          "context": "A honeybee colony consists of a single queen, hundreds of male drones and tens of thousands of female worker bees. Workers communicate the location of flowers by performing a waggle dance on the comb. The angle of the dance relative to the sun tells the other bees which direction to fly.",
+          "qas": [
+            {
+              "id": "sq09",
+              "question": "How do worker bees communicate the location of flowers?",
+              "answers": [
+                {
+                  "text": "waggle dance",
+                  "answer_start": 175
+                }
+              ]
+            },
+            {
+              "id": "sq10",
+              "question": "How many queens does a honeybee colony have?",
+              "answers": [
+                {
+                  "text": "a single queen",
+                  "answer_start": 30
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Penicillin",
+      "paragraphs": [
+        {
+          "context": "In 1928, Alexander Fleming noticed that a mould called Penicillium notatum had killed bacteria growing in a dish in his laboratory. The substance the mould produced, penicillin, became the first widely used antibiotic. Mass production began during the Second World War, and the drug saved millions of lives.",
+          "qas": [
+            {
+              "id": "sq11",
+              "question": "In which year did Fleming notice the mould's effect?",
+              "answers": [
+                {
+                  "text": "1928",
+                  "answer_start": 3
+                }
+              ]
+            },
+            {
+              "id": "sq12",
+              "question": "What was the mould Fleming noticed called?",
+              "answers": [
+                {
+                  "text": "Penicillium notatum",
+                  "answer_start": 55
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "The Moon landing",
+      "paragraphs": [
+        {
+          "context": "On 20 July 1969, Apollo 11 landed the first humans on the Moon. Astronauts Neil Armstrong and Buzz Aldrin walked on the lunar surface while Michael Collins remained in orbit aboard the command module. The landing fulfilled a goal set by President John F. Kennedy at the start of the decade.",
+          "qas": [
+            {
+              "id": "sq13",
+              "question": "Who remained in orbit during the Apollo 11 landing?",
+              "answers": [
+                {
+                  "text": "Michael Collins",
+                  "answer_start": 140
+                }
+              ]
+            },
+            {
+              "id": "sq14",
+              "question": "On what date did Apollo 11 land on the Moon?",
+              "answers": [
+                {
+                  "text": "20 July 1969",
+                  "answer_start": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "The Great Wall",
+      "paragraphs": [
+        {
+          "context": "The Great Wall of China was built over many centuries to protect northern borders from invaders. The best-known sections were built during the Ming dynasty, when the wall was rebuilt in stone and brick. All of its branches together stretch for more than 21,000 kilometres.",
+          "qas": [
+            {
+              "id": "sq15",
+              "question": "During which dynasty were the best-known sections of the Great Wall built?",
+              "answers": [
+                {
+                  "text": "the Ming dynasty",
+                  "answer_start": 139
+                }
+              ]
+            },
+            {
+              "id": "sq16",
+              "question": "How long are all the branches of the Great Wall together?",
+              "answers": [
+                {
+                  "text": "21,000 kilometres",
+                  "answer_start": 254
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Coffee",
+      "paragraphs": [
+        {
+          "context": "Coffee plants first grew wild in the highlands of Ethiopia, where legend credits a goatherd named Kaldi with noticing their stimulating effect. By the fifteenth century, coffee was being cultivated in Yemen and drunk in coffee houses across the Arabian Peninsula. It reached Europe in the seventeenth century through trade with Venice.",
+          "qas": [
+            {
+              "id": "sq17",
+              "question": "In which country did coffee plants first grow wild?",
+              "answers": [
+                {
+                  "text": "Ethiopia",
+                  "answer_start": 50
+                }
+              ]
+            },
+            {
+              "id": "sq18",
+              "question": "Which goatherd is credited with noticing coffee's effect?",
+              "answers": [
+                {
+                  "text": "Kaldi",
+                  "answer_start": 98
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Chess",
+      "paragraphs": [
+        {
+          "context": "Chess is a two-player strategy board game played on an eight-by-eight board of 64 squares. Each player begins with sixteen pieces, including one king, one queen and eight pawns. A player wins by checkmating the opponent's king, leaving it under attack with no legal escape.",
+          "qas": [
+            {
+              "id": "sq19",
+              "question": "How many squares are on a chess board?",
+              "answers": [
+                {
+                  "text": "64 squares",
+                  "answer_start": 79
+                }
+              ]
+            },
+            {
+              "id": "sq20",
+              "question": "How many pieces does each chess player begin with?",
+              "answers": [
+                {
+                  "text": "sixteen pieces",
+                  "answer_start": 115
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
